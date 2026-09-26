@@ -7,9 +7,11 @@ description: Publish a local change to Moonbot-Tech/MoonTerminal as a Pull Reque
 
 `Moonbot-Tech/MoonTerminal` is **one shared, PUBLIC repo**; contributors are Collaborators
 who push **topic branches** to `origin` and open PRs — there are no per-person forks. CI on a
-PR (`.github/workflows/build.yml`) builds the **release `.exe`**, runs **`cargo fmt --check`**
-and **`cargo test --workspace`** (both blocking) and cargo-deny; it does **not** run clippy — so
-clippy is OUR local gate, and every gate's result goes into the PR body.
+PR (`.github/workflows/build.yml`) builds the **release `.exe`**, runs **`cargo fmt --check`**,
+**`cargo test --workspace`** and **`cargo clippy --workspace --all-targets --locked -- -D warnings`**
+(all blocking, clippy since #739) and cargo-deny. Every one of them is run locally first, with
+the same command, so the PR does not go red on something a local run would have shown — and
+every gate's result goes into the PR body.
 
 The full written rules live in `docs-internal/AGENTS.md` → "Collaboration & Publishing". This
 skill is the executable checklist. Do the stages in order; **stop and ask** the developer on
@@ -89,27 +91,21 @@ report exactly what failed.
    ```powershell
    cargo build -p moon-ui-gpui --bin moonterminal --target x86_64-pc-windows-msvc --all-targets
    ```
-8. Lint (CI does not do this):
+8. Lint — the command of CI's blocking `Clippy (x86_64-msvc)` job, plus our `--target` so it
+   reuses the build above:
    ```powershell
-   cargo clippy -p moon-ui-gpui --bin moonterminal --target x86_64-pc-windows-msvc --all-targets -- -D warnings
+   cargo clippy --workspace --all-targets --locked --target x86_64-pc-windows-msvc -- -D warnings
    ```
-   **This repo carries large pre-existing clippy debt — `-D warnings` exits 101 on a clean
-   `origin/main` too, so an absolute pass is not the gate.** The gate is *no NEW finding*:
-   take each reported location inside a file this change touches and check it against the
-   diff hunks. A finding on a line the change did not touch is pre-existing — note that its
-   line number will be *shifted* by insertions above it, so compare by content, not by number.
-   If anything is genuinely new, fix it. Prove the rest with a baseline run rather than
-   asserting it:
+   **Absolute pass: exit 0.** #739 cleared the old debt, so every warning is this branch's (or
+   a rebase just pulled one in — the same fix belongs in this PR). `--workspace`, not one crate:
+   CI lints all three, and `--all-targets` covers tests and examples, where most findings sat.
+   Do not silence a lint to pass: fix it, or put a targeted `#[allow(clippy::…)]` on the item
+   with the reason beside it — the workspace allow-list in `Cargo.toml` changes only in its own
+   commit. `--locked` refuses to run while a MoonUI `[patch]` override is active (it rewrites the
+   lock); drop the flag for that run and `git checkout -- Cargo.lock` before committing.
+9. Tests (theme_contract + units) — the whole workspace, as CI runs it:
    ```powershell
-   git switch --detach origin/main
-   cargo clippy -p moon-core --target x86_64-pc-windows-msvc --all-targets -- -D warnings
-   git switch -
-   ```
-   (Stash any unstaged work first — `git rebase`/`switch` refuse to run with a dirty tree.)
-9. Tests (theme_contract + units):
-   ```powershell
-   cargo test -p moon-core --target x86_64-pc-windows-msvc
-   cargo test -p moon-ui-gpui --target x86_64-pc-windows-msvc
+   cargo test --workspace --target x86_64-pc-windows-msvc
    ```
 10. **FireTest — only if the change touches chart / render / windows / input:**
     ```powershell
@@ -180,8 +176,8 @@ So every publish reconciles against the open issues — not only when the task s
     ```
     cargo build -p moon-ui-gpui --bin moonterminal --target x86_64-pc-windows-msvc --all-targets
     cargo fmt --all -- --check
-    cargo clippy ... -- -D warnings
-    cargo test  -p moon-core -p moon-ui-gpui
+    cargo clippy --workspace --all-targets --locked --target x86_64-pc-windows-msvc -- -D warnings
+    cargo test --workspace --target x86_64-pc-windows-msvc
     ```
     <N tests green, zero warnings; FireTest chart-smoke/order-cancel-lag exit 0 if run>
     EOF
