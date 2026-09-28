@@ -50,7 +50,7 @@ rectangle, title and description in ru/en/es. The click path to any control is t
    developer decides whether the atlas needs a new capture. Settings take effect after «Сохранить»
    (bottom of the Settings window, not in the atlas): say it in the end card's `sub`, do not measure
    the button.
-4. `render.py <job> render` (foreground, ≈20 s), then steps 8–9 of the workflow below.
+4. `render.py <job> render` (foreground, ≈11 s), then steps 8–9 of the workflow below.
 
 Know the limits and say them: the atlas shots show the TEST configuration (a checkbox may be off,
 a field may read 0), and a control the atlas never captured is not there — then screenshots.
@@ -82,7 +82,7 @@ a field may read 0), and a control the atlas never captured is not there — the
 6. `python <skill>/engine/render.py <job> proof` → open `_build/proof.png` (one frame per step,
    labelled). Check: the caption is readable and does not cover the target; the target is large
    enough to read on a phone; the cursor is on the control at the click; the end card fits.
-7. `python <skill>/engine/render.py <job> render` — ≈20 s for a 17 s clip (4 browsers in parallel),
+7. `python <skill>/engine/render.py <job> render` — ≈11 s for a 17 s clip (8 browsers in parallel),
    so run it in the FOREGROUND; background and a notification only cost more turns.
 8. **Check the result**, not the log: `ffprobe`-style facts from the render line (frames, seconds,
    MB), plus 2–3 frames pulled from the mp4 at the clicks and the end
@@ -161,6 +161,6 @@ visible and render as is unless the developer said otherwise.
 ## Output
 
 `<job>\<name>.mp4` — H.264 yuv420p, 480×480 (laid out at 720, shot at `--out 480`), 30 fps with
-motion blur (3 subframes), rendered by `--workers 4` browsers in parallel, AAC click sounds,
+motion blur (3 subframes), rendered by `--workers 8` browsers in parallel (58 s with 1, 17 s with 4, 11 s with 8), AAC click sounds,
 `+faststart`. `<job>\<name>-silent.mp4` — the same without audio. `<job>\_build\` holds the
 proof sheet and the marks; it can be deleted.
