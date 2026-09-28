@@ -40,10 +40,17 @@ rectangle, title and description in ru/en/es. The click path to any control is t
 2. `python <skill>/engine/atlas.py make <screen>/<control> <job> --question "<clean question>"` —
    copies the shots of the whole path, writes `story.json` (intro, one click per screen, zoom,
    highlight, end card with the path and the first sentence of the description) and renders the
-   proof sheet. Job folder as in step 1 of the workflow below.
+   proof sheet. A target that opens a menu or popup is clicked, and the popup it opened is shown
+   and framed by its own controls. Job folder as in step 1 of the workflow below.
 3. Open `<job>/_build/proof.png` ONCE. Fix `story.json` by hand only if a frame is wrong
    (a caption covering the target, a target too small), then `render.py <job> proof` again.
-4. `render.py <job> render` in the background, then steps 8–9 of the workflow below.
+   **Do not research the code, do not re-measure a correct frame.** The shot is the truth for what
+   the clip shows: if its text differs from the atlas title (the atlas lags the code), put the
+   shot's wording in the caption and the end card and name the difference in the hand-over — the
+   developer decides whether the atlas needs a new capture. Settings take effect after «Сохранить»
+   (bottom of the Settings window, not in the atlas): say it in the end card's `sub`, do not measure
+   the button.
+4. `render.py <job> render` (foreground, ≈20 s), then steps 8–9 of the workflow below.
 
 Know the limits and say them: the atlas shots show the TEST configuration (a checkbox may be off,
 a field may read 0), and a control the atlas never captured is not there — then screenshots.
@@ -75,8 +82,8 @@ a field may read 0), and a control the atlas never captured is not there — the
 6. `python <skill>/engine/render.py <job> proof` → open `_build/proof.png` (one frame per step,
    labelled). Check: the caption is readable and does not cover the target; the target is large
    enough to read on a phone; the cursor is on the control at the click; the end card fits.
-7. `python <skill>/engine/render.py <job> render` in the BACKGROUND (≈75 s for a 17 s clip at 720×720, 30 fps), and do
-   not poll — the notification arrives.
+7. `python <skill>/engine/render.py <job> render` — ≈20 s for a 17 s clip (4 browsers in parallel),
+   so run it in the FOREGROUND; background and a notification only cost more turns.
 8. **Check the result**, not the log: `ffprobe`-style facts from the render line (frames, seconds,
    MB), plus 2–3 frames pulled from the mp4 at the clicks and the end
    (`ffmpeg -ss <t> -i <mp4> -frames:v 1 x.png`) and looked at.
@@ -108,7 +115,7 @@ a field may read 0), and a control the atlas never captured is not there — the
 Top level: `screens` (files in the job folder, in order), `steps`, optional `name` (output file
 name, defaults to the folder name), `intro` (text on the logo card; defaults to `question`; `false`
 turns the card off), `size` (`[720, 720]`), `accent` (`"#ffb347"`, the app's orange), `maxZoom`
-(`2`). With the intro on, a `zoom` in the FIRST step frames the first screen as it arrives.
+(`2`), `out` (video size in px, `480`). With the intro on, a `zoom` in the FIRST step frames the first screen as it arrives.
 
 A step may combine keys; within a step they run in this order:
 `screen` → `zoom` → `caption` → `highlight` → `hover` → `click` → `hold`.
@@ -153,6 +160,7 @@ visible and render as is unless the developer said otherwise.
 
 ## Output
 
-`<job>\<name>.mp4` — H.264 yuv420p, 720×720, 30 fps with motion blur (3 subframes), AAC click sounds,
+`<job>\<name>.mp4` — H.264 yuv420p, 480×480 (laid out at 720, shot at `--out 480`), 30 fps with
+motion blur (3 subframes), rendered by `--workers 4` browsers in parallel, AAC click sounds,
 `+faststart`. `<job>\<name>-silent.mp4` — the same without audio. `<job>\_build\` holds the
 proof sheet and the marks; it can be deleted.
