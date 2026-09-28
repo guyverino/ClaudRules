@@ -48,6 +48,7 @@
     "pipeline/tests/replylang.test.js",
     "pipeline/tests/stacks.test.js",
     "pipeline/tests/stats.test.js",
-    "project-skills/moon-terminal/publish/SKILL.md"
+    "project-skills/moon-terminal/publish/SKILL.md",
+    "project-skills/moon-terminal/tutorial-video/SKILL.md"
   ]
 }
