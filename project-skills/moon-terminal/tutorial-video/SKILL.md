@@ -1,14 +1,14 @@
 ---
 name: tutorial-video
-description: Turn 1–6 MoonTerminal screenshots into a short how-to clip for Telegram — a cursor that moves and clicks through the UI, a highlight on the answer, captions, an end card with the path — as an mp4 ready to send. For answering a user's question in the group ("народ, а есть автозакрытие графиков?"). Trigger on "видос для обучения", "сделай видос", "видео-ответ", "ролик по скринам", "/tutorial-video".
+description: Answer a MoonTerminal user's question with a short square how-to clip for Telegram — logo + question, a cursor clicking through the UI, a highlight on the answer, captions, an end card with the path — as an mp4 ready to send. Built straight from the site's UI atlas (no screenshots needed); falls back to screenshots the developer attaches. For answering a user's question in the group ("народ, а есть автозакрытие графиков?"). Trigger on "видос для обучения", "сделай видос", "видео-ответ", "ролик по скринам", "/tutorial-video".
 ---
 
-# How-to clip from screenshots
+# How-to clip for a question
 
-The developer answers questions in a Telegram group. Instead of sending two screenshots they send
-a 8–20 s clip: the screenshots in order, a cursor clicking through them, the answer highlighted,
-one short caption per step, and a final card with the path (`Настройки → Общие → …`). Length
-follows the question — two screenshots make ~12–17 s, never padded.
+The developer answers questions in a Telegram group. Instead of screenshots they send a 12–20 s
+square clip: the MoonTerminal logo with the question, the app screens in order, a cursor clicking
+through them, the answer highlighted, one short caption per step, and a final card with the path
+(`Настройки → Общие → …`). Length follows the question, never padded.
 
 The engine is fixed and lives next to this file; per clip you write ONE `story.json` and run it.
 Do not rewrite the engine per clip. If a clip needs something it cannot do, extend the engine
@@ -17,16 +17,43 @@ Do not rewrite the engine per clip. If a clip needs something it cannot do, exte
 - `engine/scene.html` — the scene. Every style is a pure function of time in `seek(t)`; the
   timeline is compiled from the story at load.
 - `engine/render.py <job> marks|proof|render` — coordinates check, proof sheet, final mp4.
+- `engine/atlas.py find|make` — the fast path: story straight from the site's UI atlas.
+- `engine/logo.svg` — the MoonTerminal logo of the intro card (`assets/brand/moonterminal-logo-blue-dark.svg`).
 
 Tools on this machine: Python 3.11 with `playwright` (Chromium installed), `numpy`, `Pillow`,
 `imageio_ffmpeg` (bundled ffmpeg 7.1). Nothing else is needed.
 
-## Inputs
+## Fast path — from the atlas (try it FIRST)
+
+The site `D:\projects\MoonterminalWeb` is built from a UI atlas: `src/data/atlas/main.json` lists
+every captured screen with its shot (`public/atlas/main/<id>.<lang>.png`, test cores, no private
+data), the screen it was opened from (`opened_from`), and every control on it with its exact
+rectangle, title and description in ru/en/es. The click path to any control is the
+`opened_from` chain — nothing to search, nothing to measure. Do not read `main.json` by hand;
+`atlas.py` does it.
+
+1. `python <skill>/engine/atlas.py find "<2–3 key words of the question>"` — prints candidates:
+   `screen/control`, the click path, the first words of the description. Words in the title rank
+   first. **Pick by the path and the description, not the first line** — «автозакр» also matches
+   «Автозакрепление». Nothing found → rephrase once (a synonym, the English word) → still nothing
+   → the screenshots path below.
+2. `python <skill>/engine/atlas.py make <screen>/<control> <job> --question "<clean question>"` —
+   copies the shots of the whole path, writes `story.json` (intro, one click per screen, zoom,
+   highlight, end card with the path and the first sentence of the description) and renders the
+   proof sheet. Job folder as in step 1 of the workflow below.
+3. Open `<job>/_build/proof.png` ONCE. Fix `story.json` by hand only if a frame is wrong
+   (a caption covering the target, a target too small), then `render.py <job> proof` again.
+4. `render.py <job> render` in the background, then steps 8–9 of the workflow below.
+
+Know the limits and say them: the atlas shots show the TEST configuration (a checkbox may be off,
+a field may read 0), and a control the atlas never captured is not there — then screenshots.
+
+## Inputs (screenshots path)
 
 1. **The screenshots.** Usually attached to the message — their paths are in the
    `[Image: source: …]` lines. Otherwise ask for a folder. Order = the order the user clicks.
-2. **The question**, verbatim if given. It becomes the first caption (a short, clean version) and
-   is stored in `story.json` as `question`.
+2. **The question**, verbatim if given. A short, clean version goes on the intro card
+   (`intro`) and the original into `question`.
 3. Nothing else by default. Do not ask about music, format or length — see the defaults below.
 
 ## Workflow
@@ -48,7 +75,7 @@ Tools on this machine: Python 3.11 with `playwright` (Chromium installed), `nump
 6. `python <skill>/engine/render.py <job> proof` → open `_build/proof.png` (one frame per step,
    labelled). Check: the caption is readable and does not cover the target; the target is large
    enough to read on a phone; the cursor is on the control at the click; the end card fits.
-7. `python <skill>/engine/render.py <job> render` in the BACKGROUND (≈1–3 min for 15 s), and do
+7. `python <skill>/engine/render.py <job> render` in the BACKGROUND (≈75 s for a 17 s clip at 720×720, 30 fps), and do
    not poll — the notification arrives.
 8. **Check the result**, not the log: `ffprobe`-style facts from the render line (frames, seconds,
    MB), plus 2–3 frames pulled from the mp4 at the clicks and the end
@@ -63,9 +90,9 @@ Tools on this machine: Python 3.11 with `playwright` (Chromium installed), `nump
 {
   "name": "autoclose-charts",
   "question": "народ, а есть автозакрытие графиков?",
+  "intro": "Есть ли автозакрытие графиков?",
   "screens": ["1.png", "2.png"],
   "steps": [
-    {"caption": "Есть ли автозакрытие графиков?", "hold": 1.3},
     {"caption": "Открываем «Настройки»", "click": [380, 49]},
     {"screen": 1, "zoom": [0, 0, 943, 280], "caption": "Вкладка «Общие»", "click": [716, 55]},
     {"zoom": [20, 555, 640, 100], "highlight": [28, 572, 622, 44], "hover": [41, 586],
@@ -79,8 +106,9 @@ Tools on this machine: Python 3.11 with `playwright` (Chromium installed), `nump
 ```
 
 Top level: `screens` (files in the job folder, in order), `steps`, optional `name` (output file
-name, defaults to the folder name), `size` (`[1280, 720]`), `accent` (`"#ffb347"`, the app's
-orange), `maxZoom` (`2`).
+name, defaults to the folder name), `intro` (text on the logo card; defaults to `question`; `false`
+turns the card off), `size` (`[720, 720]`), `accent` (`"#ffb347"`, the app's orange), `maxZoom`
+(`2`). With the intro on, a `zoom` in the FIRST step frames the first screen as it arrives.
 
 A step may combine keys; within a step they run in this order:
 `screen` → `zoom` → `caption` → `highlight` → `hover` → `click` → `hold`.
@@ -97,13 +125,13 @@ A step may combine keys; within a step they run in this order:
 | `end` | text, or `{text, sub}` | final card, `→` drawn in the accent colour. Always the last step |
 
 Each screenshot can be entered once (a second `screen` step to the same index leaves it invisible);
-to come back to a view, list the same file again in `screens`. Text too wide for the frame shrinks
-to fit, but keep captions ≤ 45 characters and the end line ≤ 55 — shrunk text is hard to read on a
-phone.
+to come back to a view, list the same file again in `screens`. Captions and the end card wrap onto
+lines (and shrink only if a single word is too wide); keep captions ≤ 45 characters — two lines is
+the most the caption band holds.
 
 ## What a good clip looks like
 
-- **First frame = the question.** Telegram shows the first frame as the preview.
+- **First frame = the logo and the question.** Telegram shows the first frame as the preview.
 - **One caption per step, ≤ 45 characters,** Russian, in the app's own words: quote the control
   as it is labelled («Настройки», «Общие»), say what to do, not what the camera does.
 - **Zoom so the answer is readable on a phone:** the highlighted row must end up ≥ 1.5× in the
@@ -125,6 +153,6 @@ visible and render as is unless the developer said otherwise.
 
 ## Output
 
-`<job>\<name>.mp4` — H.264 yuv420p, 1280×720, 60 fps with motion blur, AAC click sounds,
+`<job>\<name>.mp4` — H.264 yuv420p, 720×720, 30 fps with motion blur (3 subframes), AAC click sounds,
 `+faststart`. `<job>\<name>-silent.mp4` — the same without audio. `<job>\_build\` holds the
 proof sheet and the marks; it can be deleted.
