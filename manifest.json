@@ -35,6 +35,7 @@
     "pipeline/reply-lang.js",
     "pipeline/stats.js",
     "pipeline/test.js",
+    "pipeline/tested-tree.js",
     "pipeline/tests/_harness.js",
     "pipeline/tests/agents.test.js",
     "pipeline/tests/bundle.test.js",
@@ -48,6 +49,7 @@
     "pipeline/tests/replylang.test.js",
     "pipeline/tests/stacks.test.js",
     "pipeline/tests/stats.test.js",
+    "pipeline/tests/testedtree.test.js",
     "project-skills/moon-terminal/publish/SKILL.md",
     "project-skills/moon-terminal/tutorial-video/SKILL.md"
   ]

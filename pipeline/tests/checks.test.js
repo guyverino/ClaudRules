@@ -87,8 +87,10 @@ const { sessionPreamble } = pipeline("lib/transcript.js");
   }
   t(/WARN {2}s8 - \/simplify ran after/.test(tail({ agents: [ag("flow", 2), ag("fix-diff", 5)], skills: [{ step: 9, skill: "simplify", args: "" }] })), "tail: simplify after delta warns", "warn");
   t(!/s8 - \/simplify/.test(tail({ agents: [ag("flow", 2), ag("fix-diff", 9)], skills: [{ step: 5, skill: "simplify", args: "" }] })), "tail: simplify before delta is the shape", "silent");
-  t(/WARN {2}s5 - the full test suite ran 4 times/.test(tail({ shell: [sh("cargo test --workspace", 1), sh("cargo test -p a", 2), sh("cargo build", 3), sh("cargo test --workspace", 4), sh("cargo test -p b --test t", 5)] })), "tail: fourth test run warns", "warn");
+  t(/WARN {2}s6 - the full test suite ran 4 times/.test(tail({ shell: [sh("cargo test --workspace", 1), sh("cargo test -p a", 2), sh("cargo build", 3), sh("cargo test --workspace", 4), sh("cargo test -p b --test t", 5)] })), "tail: fourth test run warns", "warn");
   t(!/test suite ran/.test(tail({ shell: [sh("cargo test --workspace", 1), sh("cargo build", 2), sh("cargo build", 3), sh("cargo build", 4), sh("cargo test --workspace", 5)] })), "tail: builds between edits are free", "silent");
+  // R8: one run at the end is the shape; a red run, its fix and the re-run is the tolerance.
+  t(/WARN {2}s6 - the full test suite ran 3 times/.test(tail({ shell: [sh("cargo test --workspace", 1), sh("cargo build", 2), sh("cargo test --workspace", 3), sh("cargo build", 4), sh("cargo test --workspace", 5)] })), "tail: third full run warns (R8)", "warn");
   // Full vs targeted (HVol: 33 runs, 8 full — the WARN that lumped them fired on every task and
   // was explained away every time). A targeted run between edits is the build-equivalent.
   {
@@ -97,7 +99,16 @@ const { sessionPreamble } = pipeline("lib/transcript.js");
     t(!/test suite ran/.test(tail({ shell: targeted, writes: edits })), "tail: targeted runs between edits are not suite runs", "silent");
     // The one waste in a targeted run: the same command again with no edit in between.
     const repeat = [sh("cargo test -p moon-chart hvol 2>&1 | tail -3", 1), sh("cargo test -p moon-chart hvol 2>&1 | tail -3", 2), sh("cargo test -p moon-chart hvol", 4)];
-    t(/WARN {2}s5 - 1 test run\(s\) repeated the previous command with no edit in between/.test(tail({ shell: repeat, writes: [{ step: 3, tool: "Edit", file: "crates/a/src/x.rs" }] })), "tail: a re-run without an edit warns once", "warn");
+    t(/WARN {2}s6 - 1 test run\(s\) repeated the previous command with no edit in between/.test(tail({ shell: repeat, writes: [{ step: 3, tool: "Edit", file: "crates/a/src/x.rs" }] })), "tail: a re-run without an edit warns once", "warn");
+    // A pull or a switch between two runs moved the tree: the post-merge run is not a repeat.
+    const ws = "cargo test --workspace --target x86_64-pc-windows-msvc";
+    t(!/repeated the previous/.test(tail({ shell: [sh(ws, 1), sh("git switch main", 2), sh("git pull --ff-only", 3), sh(ws, 4)] })), "tail: a run after a pull is not a repeat", "silent");
+    // R8's publish shape: end-of-task run, the run after a rebase moved the tree, the post-merge
+    // run after `main` moved — three runs, three trees, no WARN. A fetch moves nothing.
+    const publish = [sh(ws, 1), sh("git rebase origin/main", 2), sh(ws, 3), sh("git pull --ff-only", 4), sh(ws, 5)];
+    t(!/test suite ran/.test(tail({ shell: publish })), "tail: one run per tree is the shape", "silent");
+    t(/test suite ran 3 times on one tree/.test(tail({ shell: [sh(ws, 1), sh("git fetch origin", 2), sh(ws, 3), sh("cargo build", 4), sh(ws, 5)] })), "tail: a fetch does not reset the count", "warn");
+    t(/test suite ran 3 times on one tree/.test(tail({ shell: [sh(ws, 1), sh("git merge-base HEAD origin/main", 2), sh(ws, 3), sh("cargo build", 4), sh(ws, 5)] })), "tail: merge-base is not a move", "warn");
     // A write INSIDE the re-running command (`patch.py && cargo test`) makes it a fresh question.
     t(!/repeated the previous/.test(tail({ shell: repeat.slice(0, 2), writes: [{ step: 2, tool: "script", file: "crates/a/src/x.rs" }] })), "tail: an edit in the same command is not a repeat", "silent");
     t(!/repeated the previous/.test(tail({ shell: repeat.slice(0, 2), writes: [{ step: 2, tool: "shell", file: "", unknown: true }] })), "tail: an unresolved write still counts as an edit", "silent");

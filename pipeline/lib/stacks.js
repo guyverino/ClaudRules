@@ -8,9 +8,19 @@
 // finish the job for the target patterns.
 const CODE_EXT = "tsx|jsx|json|yaml|yml|toml|cpp|java|ps1|rs|ts|js|py|go|kt|cs|rb|php|sh|md|c|h";
 
-// A test-suite run, as distinct from a build: the count of these is what §5 bounds. `cargo test`
+// A test-suite run, as distinct from a build: the count of these is what §6 bounds. `cargo test`
 // with a `--test <name>` or `-p` narrowing still counts — the point is the habit, not the size.
 const TEST_RUN_RE = /\b(cargo\s+test|npm\s+test|pnpm\s+test|yarn\s+test|pytest|go\s+test|dotnet\s+test)\b/i;
+// `tested-tree.js check -- cargo test …` NAMES the suite to ask whether this tree already passed
+// it; nothing runs. Cut out before TEST_RUN_RE, on the full text — the quoted script path the
+// clause hangs off is blanked by the quote stripping. Only the clause AFTER the path goes: eating
+// the path's closing quote left the quotes unbalanced, and the quote stripping then blanked a
+// real `cargo test` chained after the check. `tested-tree.js run -- …` is a real run and stays.
+const TREE_CHECK_RE = /(?<=tested-tree\.js["']?)\s+check\b[^;&|\n]*/gi;
+const withoutTreeChecks = (text) => String(text || "").replace(TREE_CHECK_RE, " ");
+// What puts a different tree under the next test run: §6 bounds the suite per tree, not per task.
+// `(?![\w-])`: `git merge-base` and `git checkout-index` move nothing.
+const TREE_MOVE_RE = /\bgit\s+(?:pull|rebase|merge|switch|checkout|stash\s+pop)(?![\w-])(?![^\n;&|]*--abort)/;
 // The formatter, as §5 wants it: once before the build. Rust only for now — that is where the CI
 // job is blocking and where a PR went red twice for want of one run.
 const FMT_RE = /\b(cargo\s+fmt|rustfmt)\b/i;
@@ -61,9 +71,10 @@ const SUPPORT_AGENTS = new Set(["fix-diff", "verify-finding"]);
 // A literal for a RegExp source.
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// §5 bounds the FULL suite at two runs per task; a targeted run on one failing case between edits
-// is the build-equivalent, and counting it as a suite run made the WARN fire on every task and
-// taught the orchestrator to explain it away (33 runs on one feature: 8 full, the rest targeted).
+// §6 bounds the FULL suite at one run per task (two tolerated); a targeted run on one failing case
+// between edits is the build-equivalent, and counting it as a suite run made the WARN fire on
+// every task and taught the orchestrator to explain it away (33 runs on one feature: 8 full, the
+// rest targeted).
 // A cargo run is targeted when a bare word follows the subcommand that is neither an option nor
 // an option's value: `cargo test -p moon-chart hvol` is targeted, `cargo test -p moon-core --lib`,
 // `--workspace` and `cargo test $t` (a loop over targets) are full runs of what they name.
@@ -98,4 +109,4 @@ function testKey(command) {
   return m ? m[0].replace(/\s*\d?[<>].*$/, "").replace(/\s+/g, " ").trim().toLowerCase() : "";
 }
 
-module.exports = { CODE_EXT, TEST_RUN_RE, FMT_RE, BUILD_RE, CODE_FILE_RE, TEST_OR_DOC_RE, SCRATCH_RE, LEAK_MARK_RE, OTHERS_RE, PULL_RE, RELEASE_ACK_RE, SHIP_RE, REVIEW_AGENTS, SUPPORT_AGENTS, escapeRe, testTargeted, testKey };
+module.exports = { CODE_EXT, TEST_RUN_RE, withoutTreeChecks, TREE_MOVE_RE, FMT_RE, BUILD_RE, CODE_FILE_RE, TEST_OR_DOC_RE, SCRATCH_RE, LEAK_MARK_RE, OTHERS_RE, PULL_RE, RELEASE_ACK_RE, SHIP_RE, REVIEW_AGENTS, SUPPORT_AGENTS, escapeRe, testTargeted, testKey };

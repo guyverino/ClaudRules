@@ -103,10 +103,20 @@ report exactly what failed.
    with the reason beside it — the workspace allow-list in `Cargo.toml` changes only in its own
    commit. `--locked` refuses to run while a MoonUI `[patch]` override is active (it rewrites the
    lock); drop the flag for that run and `git checkout -- Cargo.lock` before committing.
-9. Tests (theme_contract + units) — the whole workspace, as CI runs it:
+9. Tests (theme_contract + units) — the whole workspace, as CI runs it, **unless this exact tree
+   already passed it**. The task's own end-of-task run (global CLAUDE.md §6) went through the
+   recorder; when nothing moved since — no rebase delta, no fmt rewrite, no stash — the tree is
+   the same and a second run only repeats the first (R8: 3–5 full runs per landed change, 58 % of
+   all cargo time). Ask first:
    ```powershell
-   cargo test --workspace --target x86_64-pc-windows-msvc
+   node "$HOME/.claude/pipeline/tested-tree.js" check -- cargo test --workspace --target x86_64-pc-windows-msvc
    ```
+   Exit 0 → skip, and the report says `test: tree <hash> already green at <time>`. Any other exit → run it
+   through the recorder, so the post-merge check in step 14 can reuse it:
+   ```powershell
+   node "$HOME/.claude/pipeline/tested-tree.js" run -- cargo test --workspace --target x86_64-pc-windows-msvc
+   ```
+   The command must be spelled exactly like this in both places: the record matches on it.
 10. **FireTest — only if the change touches chart / render / windows / input:**
     ```powershell
     target\x86_64-pc-windows-msvc\debug\moonterminal.exe --debug-script chart-smoke
@@ -222,7 +232,8 @@ So every publish reconciles against the open issues — not only when the task s
     - **Left is 0** — nothing landed since the rebase in stage B. Merge.
     - **Left is >0** — `main` moved. Do NOT merge on the strength of the old run:
       1. `git rebase origin/main` (conflicts: stage B's rules apply).
-      2. Re-run stage C on the COMBINED tree — at minimum both test commands; the whole stage if
+      2. Re-run stage C on the COMBINED tree — at minimum the clippy and test steps (step 9's
+         `check` reports the moved tree and sends it through `run`); the whole stage if
          the rebase pulled in anything that touches this diff's files.
       3. `git push --force-with-lease`, then wait for CI again (`gh pr checks <n> --watch`).
       4. Only then merge.
@@ -251,13 +262,23 @@ So every publish reconciles against the open issues — not only when the task s
     actually builds. A cancelled run is not a pass, and in the GitHub UI it reads as an innocuous
     `!` rather than as "nobody tested this".
 
-    So the merge is not done until you have tested the merged `main` locally:
+    So the merge is not done until you know the merged `main` is green. First ask whether it is
+    the tree stage C already tested — a squash of a branch rebased onto an unmoved `main` is the
+    same tree, byte for byte:
     ```powershell
     git switch main
     git pull --ff-only
-    cargo test -p moon-core --target x86_64-pc-windows-msvc
-    cargo test -p moon-ui-gpui --target x86_64-pc-windows-msvc
+    node "$HOME/.claude/pipeline/tested-tree.js" check -- cargo test --workspace --target x86_64-pc-windows-msvc
     ```
+    Exit 0 → `main` is that tree; the report says `post-merge: main == tested tree <hash>, not
+    re-run`. Any other exit → something else landed in between (the #346/#348 case below), so test it:
+    ```powershell
+    node "$HOME/.claude/pipeline/tested-tree.js" run -- cargo test --workspace --target x86_64-pc-windows-msvc
+    ```
+    `--workspace`, not `-p moon-core` + `-p moon-ui-gpui`: the pair left moon-chart, moon-tg,
+    moon-remote and moon-station untested, and each `-p` resolves a different feature set than the
+    workspace does, so third-party crates rebuild for it (122 of them, 3.5 min, measured
+    2026-10-02).
     Red → say so at once and fix it on a new `fix/...` branch through this same skill; a broken
     `main` blocks every other contributor and is not something to discover tomorrow. This is the
     check that caught #346 vs #348 on 2026-08-27, where both PRs were green, the merge was clean,

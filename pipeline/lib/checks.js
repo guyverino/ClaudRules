@@ -2,7 +2,7 @@
 // — this IS the audit; the receipt is the orchestrator's account of itself, the digest is the
 // evidence. One function per gate, all fed the same context, in the order the report prints.
 
-const { CODE_FILE_RE, TEST_OR_DOC_RE, SCRATCH_RE, TEST_RUN_RE, FMT_RE, LEAK_MARK_RE, OTHERS_RE, PULL_RE, RELEASE_ACK_RE, SHIP_RE, REVIEW_AGENTS, SUPPORT_AGENTS, testTargeted, testKey } = require("./stacks");
+const { CODE_FILE_RE, TEST_OR_DOC_RE, SCRATCH_RE, TEST_RUN_RE, TREE_MOVE_RE, FMT_RE, LEAK_MARK_RE, OTHERS_RE, PULL_RE, RELEASE_ACK_RE, SHIP_RE, REVIEW_AGENTS, SUPPORT_AGENTS, testTargeted, testKey } = require("./stacks");
 
 // A shell flag decided at digest time on the full command; an older digest lacks the flag, and
 // the (truncated) stored command is judged instead.
@@ -245,8 +245,10 @@ function gateDelta(c) {
   }
 }
 
-// §5/§6: the whole test suite runs at the gate and once after the fix batch — not after every
-// edit. 43 test runs across four tasks, 13 on one button, ~1–3 min each.
+// §6: the whole test suite runs ONCE per task, at the end — after the fix batch — not at the §5
+// gate and not after every edit (R8: 58 % of all cargo time was test runs, 3–5 full runs per
+// landed change). Two are tolerated: a red end-of-task run, its fix, and the re-run. Before R8
+// the shape was two and the bound three; 43 test runs across four tasks, 13 on one button.
 // `test` is decided on the FULL command at digest time, like `build`; the stored copy is cut at
 // 300 characters and a long prefix would hide the run. Older digests lack the flag — fall back.
 // Two counts, because one count cried wolf: on the HVol feature 33 runs were 8 full-suite runs
@@ -261,9 +263,22 @@ function gateTestRuns(c) {
   // only for an older digest, where a cargo clause past 300 characters reads as a full run.
   const targeted = (s) => (s.targeted !== undefined ? s.targeted : testTargeted(s.command));
   const keyOf = (s) => (s.testKey !== undefined ? s.testKey : testKey(s.command));
-  const full = runs.filter((s) => !targeted(s)).length;
-  if (full > 3) {
-    c.lines.push("WARN  s5 - the full test suite ran " + full + " times: §5 gate + one re-run after the §6 batch is the shape; build between edits, test once");
+  // A pull, rebase, merge or branch switch puts a different tree under the next run — the publish
+  // step's run after a rebase, the post-merge run on `main` after `git pull`. The bound and the
+  // repeat both start over there: those runs are the ones R8 keeps on purpose. A fetch moves no
+  // file and does not count.
+  const moves = d.shell.filter((s) => TREE_MOVE_RE.test(s.command)).map((s) => s.step);
+  const movedBetween = (a, b) => moves.some((m) => m > a && m <= b);
+  let full = 0;
+  let worst = 0;
+  let prevFull;
+  for (const s of runs.filter((r) => !targeted(r))) {
+    full = prevFull !== undefined && movedBetween(prevFull, s.step) ? 1 : full + 1;
+    worst = Math.max(worst, full);
+    prevFull = s.step;
+  }
+  if (worst > 2) {
+    c.lines.push("WARN  s6 - the full test suite ran " + worst + " times on one tree: once at the end of the task, after the §6 batch, is the shape; build between edits, test once");
   }
   const lastRun = new Map(); // test key -> step of its previous run
   let repeats = 0;
@@ -272,12 +287,13 @@ function gateTestRuns(c) {
     if (!key) continue;
     const prev = lastRun.get(key);
     // Any write between the two runs — including one INSIDE this command (`patch.py && cargo
-    // test`), and an unresolved shell write — makes the re-run a fresh question, not a repeat.
-    if (prev !== undefined && !d.writes.some((w) => w.step > prev && w.step <= s.step)) repeats += 1;
+    // test`), and an unresolved shell write — makes the re-run a fresh question, not a repeat;
+    // so does a pull or a switch that changed the tree under it.
+    if (prev !== undefined && !d.writes.some((w) => w.step > prev && w.step <= s.step) && !movedBetween(prev, s.step)) repeats += 1;
     lastRun.set(key, s.step);
   }
   if (repeats) {
-    c.lines.push("WARN  s5 - " + repeats + " test run(s) repeated the previous command with no edit in between: the answer was already on screen, and each re-run is a whole turn over the full context");
+    c.lines.push("WARN  s6 - " + repeats + " test run(s) repeated the previous command with no edit in between: the answer was already on screen, and each re-run is a whole turn over the full context");
   }
 }
 

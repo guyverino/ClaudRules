@@ -26,7 +26,7 @@ Over 44 ledgered tasks: `flow` + `half-fix` returned **16 acted-on `high`** on 2
 found, 1 acted, in 14 runs; the audit agent cost 34 minutes and 746 K tokens over 10 runs to
 restate what a script prints for free. → the row is 2 angles + one conditional; `error-paths`
 became conditional; `/code-review` left every lane; `/simplify` rides refactor only; `fix-diff`
-is conditional and runs once; the audit is the checker; the suite runs twice per task.
+is conditional and runs once; the audit is the checker; the suite runs twice per task (once per task since R8).
 
 ## R3 — a cheap lane, or the pipeline stops being used (2026-09-10)
 
@@ -64,3 +64,19 @@ test. Split into `lib/` modules and `tests/` per subject: 260 cases green before
 four `/simplify` agents on that refactor returned 88 findings for ~770 K tokens; ~25 were applied,
 the rest were behaviour changes refused or duplicates — `/simplify` earns its place on a refactor
 and nowhere else.
+
+## R8 — one suite run per change, and the tree it passed on is remembered (2026-10-02)
+
+The journals of 128 sessions on one project: **58 % of all foreground cargo time was test runs**
+(`test --workspace` 26 %, targeted `test -p` 32 %; builds 24 %, clippy 11 %, fmt 1 %). The rules
+asked for the full suite at the §5 gate, again after the §6 batch, again in the publish step,
+again on the combined tree when `main` moved, and once more after the merge — 3–5 runs per landed
+change, mostly on the same tree. Measured on that tree: the 5 515 tests themselves run in ~13 s;
+what costs is compiling the test binaries (18–62 s per changed crate), and that is paid by every
+run, targeted or full — so narrowing the run saves nothing, dropping the repeat saves it all.
+→ the suite runs once per task, at the end; `tested-tree.js` records the tree a green run passed
+on, and a later step skips the suite when its tree is that tree under that command. The
+post-merge check keeps running exactly when it can catch something: when another merge landed in
+between and the tree moved. Its `-p` pair became `--workspace`: two `-p` runs left four crates
+untested and resolved a different feature set, which rebuilt 122 third-party crates (3.5 min) on
+the run that measured it.

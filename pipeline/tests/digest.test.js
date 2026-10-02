@@ -243,4 +243,13 @@ const { lateRowsFor } = pipeline("lib/late.js");
   const bash = (cmd) => ({ type: "assistant", message: { content: [{ type: "tool_use", id: "b9", name: "Bash", input: { command: cmd } }] } });
   t(buildDigest([bash("cat >> t.test.js <<'EOF'\nt(sh(\"cargo test --workspace\"), 1)\nEOF")]).shell[0].build === false, "build: a heredoc mentioning cargo test is not a build", false);
   t(buildDigest([bash('sh -c "cargo build -p a"')]).shell[0].build === true, "build: a quoted build command is still a build", true);
+  // tested-tree.js: `check` names the suite and runs nothing; `run` runs it.
+  const suite = (cmd) => buildDigest([bash(cmd)]).shell[0].test;
+  t(suite('node "C:/x/pipeline/tested-tree.js" check -- cargo test --workspace') === false, "test: tested-tree check runs nothing", false);
+  t(suite('node "C:/x/pipeline/tested-tree.js" run -- cargo test --workspace') === true, "test: tested-tree run is a suite run", true);
+  t(suite("node C:/x/tested-tree.js check -- cargo test --workspace; cargo test --workspace") === true, "test: a run chained after a check counts", true);
+  // The documented spelling, both halves quoted: the check must not unbalance the quotes and so
+  // blank the real run after it.
+  const chain = 'node "C:/x/tested-tree.js" check -- cargo test --workspace || node "C:/x/tested-tree.js" run -- cargo test --workspace | Select-String "test result"';
+  t(suite(chain) === true, "test: quoted check || run counts the run", suite(chain));
 }

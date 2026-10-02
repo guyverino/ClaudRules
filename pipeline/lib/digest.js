@@ -5,7 +5,7 @@
 // Nothing here judges: that is checks.js. This file only reads the record faithfully, and its
 // comments are the catalogue of shapes that fooled it once.
 
-const { CODE_EXT, TEST_RUN_RE, FMT_RE, BUILD_RE, LEAK_MARK_RE, OTHERS_RE, PULL_RE, RELEASE_ACK_RE, SHIP_RE, escapeRe, testTargeted, testKey } = require("./stacks");
+const { CODE_EXT, TEST_RUN_RE, withoutTreeChecks, FMT_RE, BUILD_RE, LEAK_MARK_RE, OTHERS_RE, PULL_RE, RELEASE_ACK_RE, SHIP_RE, escapeRe, testTargeted, testKey } = require("./stacks");
 const { userTurnText, isTaskOpening, textOf, isAgentCall } = require("./transcript");
 
 // What "this script writes a file" looks like in Python and JS: a write CALL, or an open() in a
@@ -338,22 +338,25 @@ function buildDigest(records) {
         const full = String(inp.command || "");
         // detection runs on the FULL command; only the stored copy is truncated.
         const bare = bareOf(full);
+        // `tested-tree.js check -- cargo test …` names a suite and runs nothing: neither a build
+        // nor a test run, and its clause must not lend a later real run its key or its scope.
+        const ran = withoutTreeChecks(full);
         d.shell.push({
           step,
           command: full.slice(0, 300),
           // Heredoc bodies out, quotes kept: a test file written through a heredoc that MENTIONS
           // `cargo test` is not a build (four phantom "builds" fired the fix-batch gate on the
           // task that wrote them), while `sh -c "cargo build"` still is one.
-          build: BUILD_RE.test(withoutHeredocs(full)),
-          test: TEST_RUN_RE.test(bare),
+          build: BUILD_RE.test(withoutHeredocs(ran)),
+          test: TEST_RUN_RE.test(bareOf(ran)),
           // Targeted-or-full and the run's identity are decided here too, on the full text: a
           // `python - <<'PYEOF' … PYEOF && cargo test -p moon-chart hvol` carries its cargo clause
           // past the 300-character stored copy, and judged on that copy the targeted run read as
           // a full suite run — two phantom "full" runs on the first digest this was tried on.
           // Heredocs out, QUOTES kept: on the quote-blanked text `--features "a b" hvol` lets
           // `--features` swallow the filter, and a quoted filter `"x::y"` vanishes from the key.
-          targeted: testTargeted(withoutHeredocs(full)),
-          testKey: testKey(withoutHeredocs(full)),
+          targeted: testTargeted(withoutHeredocs(ran)),
+          testKey: testKey(withoutHeredocs(ran)),
           fmt: FMT_RE.test(bare),
           leakMark: LEAK_MARK_RE.test(full),
           releaseAck: RELEASE_ACK_RE.test(full),

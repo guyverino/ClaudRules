@@ -5,7 +5,7 @@ it passes* — or I write into the §10 receipt what failed and why I'm going an
 `CLAUDE.md` / `AGENTS.md` carries the project-specific facts (build command, components, theme,
 deps, the `## Commands` and `## Secrets` blocks); this file is only the structure and the gates.
 The measurements behind every number here live in the rules repo, `docs/RATIONALE.md` (cited as
-R1…R7): the rules stay short, the reasons stay checkable.
+R1…R8): the rules stay short, the reasons stay checkable.
 
 Core stance: **the reviewer and the verifier are a separate agent whose job is to break the
 change — not me re-reading my own diff.** A wrong-but-plausible change survives my own
@@ -231,7 +231,9 @@ that fires after each `Edit` moves the lines under my own next edit, and §4's l
 bites on every second change. One run at this gate costs nothing and leaves the tree clean.
 
 Run whatever *static* checks the repo has — contract tests, lint, format: they catch architecture
-violations (hardcode, wrong layer, banned imports) before runtime. Build with the exact command
+violations (hardcode, wrong layer, banned imports) before runtime. Contract tests that live inside
+the test suite are not run here: they ride the suite's one run at the end of the task (§6, R8).
+Build with the exact command
 from that block — all targets and features (conditional blocks, tests, benches and examples are
 where a signature break hides), plus the linter with **warnings denied**.
 
@@ -303,17 +305,28 @@ or **refuted against the source** — never dismissed as "sounds plausible eithe
 auto-applied because it sounded confident. When a finding turns on how a third-party API or
 protocol actually behaves, **I fetch its current docs myself** before accepting or refuting it — a
 stale-API mismatch is invisible to pure code-reading, and §10 names the library and what I
-checked. Confirmed fixes go in as ONE batch, then §5 re-runs once. Zero findings is legitimate
+checked. Confirmed fixes go in as ONE batch, then §5's build and static checks re-run once — and
+the suite takes its one run (below). Zero findings is legitimate
 only if I say "0 findings" out loud.
 
-🚩 **The test suite runs twice per task, not after every edit** (R2): once at the §5 gate, once
-after this batch. Between edits a `build` is enough; a **targeted** run on the one failing case
-(`cargo test -p crate name`) is the build-equivalent and is not bounded — but it is run **once per
-edit**: the same command again with nothing changed between only re-prints what was already on
-screen, and each re-run is a whole turn over the full context. The batch itself lands in **one
-pass**: every confirmed fix, then one build — not fix, check, next fix, next check (seven checks in
-76 s on one round). The checker counts the full suite past three, the repeat without an edit, and
-the fix-by-fix build ping-pong after the review.
+🚩 **The full test suite runs ONCE per task, at the end** (R2, R8): after the last edit — this
+batch, or the §8/§9 edits when they follow it, or the §5 build when nothing was fixed — never at
+the §5 gate and never after every edit.
+A red end-of-task run, its fix and the re-run is the one tolerated second run. It runs through the
+recorder, so the tree it passed on is remembered and the publish step does not test it again:
+`node "{{CLAUDE_HOME}}\pipeline\tested-tree.js" run -- <the repo's suite command>` — spelled
+exactly as the repo's publish step spells it, because the record matches on the command — and
+before any suite run in a later step (a publish, a post-merge check),
+`… tested-tree.js check -- <the same command>`: exit 0 = this exact tree already passed under this
+exact command, skip it and say so; any other exit = run it, through `run`. A bug's repro test (§1,
+§7) is targeted and is not this run. Between edits a `build` is enough; a **targeted** run on the one
+failing case (`cargo test -p crate name`) is the build-equivalent and is not bounded — but it is
+run **once per edit**: the same command again with nothing changed between only re-prints what
+was already on screen, and each re-run is a whole turn over the full context. The batch itself
+lands in **one pass**: every confirmed fix, then one build — not fix, check, next fix, next check
+(seven checks in 76 s on one round). The checker counts the full suite past two on one tree (a
+pull, rebase or switch puts a new tree under the next run), the repeat without an edit, and the
+fix-by-fix build ping-pong after the review.
 
 ## 7. Runtime verification (the strongest gate)
 
