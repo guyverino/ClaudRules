@@ -177,26 +177,89 @@ const CLAUSE_SPLIT_RE = new RegExp("&&|\\|\\||;|\\n");
 // scripts written into the scratchpad came back as "code was edited, no named review angle
 // fired" on a task that touched no project file. Only a move into a throwaway folder re-roots
 // the target: after `cd <project>` the rootless path already means what inProject reads it as.
-const CD_RE = /^\s*(?:cd|Set-Location|pushd|Push-Location)\s+(?:-(?:Path|LiteralPath)\s+)?(["']?)([^"'\s;&|]+)\1/i;
+// The move need not come first — `S=<scratch>; mkdir -p $S/ab && cd $S/ab && printf … > x.rs` —
+// and its folder may sit in a variable assigned earlier in the same command; a `$NAME` assigned
+// nowhere in it stays unexpanded and so is not read as scratch. Only targets AFTER the move are
+// re-rooted: a write before it is relative to where the command started.
+const CD_AT_RE = /(?:^|[\s;&|(])(?:cd|Set-Location|pushd|Push-Location)\s+(?:-(?:Path|LiteralPath)\s+)?(?:"([^"\n]+)"|'([^'\n]+)'|([^"'\s;&|]+))/gi;
+// bash `S=x` / `S="a b"` and PowerShell `$S = "x"`, assigned before the move.
+const ASSIGN_RE = /(?:^|[\s;&|(])\$?([A-Za-z_]\w*)\s*=\s*(?:"([^"\n]*)"|'([^'\n]*)'|([^"'\s;&|]+))/g;
+// A move that ends inside the same command — a subshell, popd, Pop-Location, `cd -` — leaves the
+// writes after it in the starting folder; where that is cannot be told by position, so none of
+// the command is re-rooted.
+const MOVE_ENDS_RE = /\(\s*(?:cd|Set-Location|pushd|Push-Location)\s|(?:^|[\s;&|(])(?:popd|Pop-Location)\b|(?:^|[\s;&|(])cd\s+-(?=[\s;&|)]|$)/i;
 const THROWAWAY_DIR_RE = /(?:^|[\\/])(?:scratchpad|temp|tmp)(?:[\\/]|$)/i;
 const ROOTED_RE = /^(?:[a-z]:[\\/]|[\\/]|~|\$)/i;
-// One leading move only: a second `cd` in the same command may go anywhere — into the project —
-// and then no rootless target can be placed with confidence; read as the project, the old way.
-const ANY_CD_RE = /(?:^|[\s;&|(])(?:cd|Set-Location|pushd|Push-Location)\s/gi;
-function throwawayCd(cmd) {
-  const m = cmd.match(CD_RE);
-  if (!m || !THROWAWAY_DIR_RE.test(m[2])) return "";
-  if ((cmd.match(ANY_CD_RE) || []).length > 1) return "";
-  return m[2].replace(/[\\/]+$/, "");
+const NO_CD = { dir: "", at: Infinity };
+// One move only: a second `cd` in the same command may go anywhere — into the project — and then
+// no rootless target can be placed with confidence; read as the project, the old way.
+// `cmd` is read with heredoc bodies blanked, offsets kept: a `cd` or `S=` line inside a body is the
+// body's text.
+function throwawayCd(rawCmd) {
+  const cmd = heredocBodiesOut(rawCmd, true);
+  if (MOVE_ENDS_RE.test(cmd)) return NO_CD;
+  const cds = [...cmd.matchAll(CD_AT_RE)];
+  if (cds.length !== 1) return NO_CD;
+  const vars = new Map();
+  for (const a of cmd.matchAll(ASSIGN_RE)) if (a.index < cds[0].index) vars.set(a[1], a[2] ?? a[3] ?? a[4]);
+  const target = cds[0][1] ?? cds[0][2] ?? cds[0][3];
+  const dir = target.replace(/\$\{?([A-Za-z_]\w*)\}?/g, (raw, name) => (vars.has(name) ? vars.get(name) : raw));
+  if (!THROWAWAY_DIR_RE.test(dir)) return NO_CD;
+  return { dir: dir.replace(/[\\/]+$/, ""), at: cds[0].index };
 }
 // `../x.rs` climbs out of the folder, so it is not scratch merely for starting there.
-const underCd = (dir, file) => (dir && !ROOTED_RE.test(file) && !file.startsWith("..") ? dir + "/" + file : file);
+const underCd = (cd, file, at) => (cd.dir && at > cd.at && !ROOTED_RE.test(file) && !file.startsWith("..") ? cd.dir + "/" + file : file);
+
+// The body of a heredoc — or of a PowerShell here-string — is data the command carries: a file
+// being written, a commit message, a test that quotes a shell line. Read as commands, a test
+// appended through `cat >> x.test.js <<'EOF'` whose text held `cat > crates/a.rs` recorded a Rust
+// edit on a task that touched no Rust (03.10). The opener line stays — `cat > x.rs <<'EOF'` and
+// `cat <<'EOF' > x.rs` are the writes — and so does a body fed to a shell, which IS commands.
+// Interpreter heredocs (`python - <<'EOF'`) are read by collectScriptWrites, from the raw text.
+// Read line by line, the way the shell does: a plain `<<TAG` ends only at a line that IS the tag,
+// `<<-TAG` also at one indented with tabs, a `<<<` here-string is not a heredoc, an unterminated
+// one is left as it is. A body is fed to a shell when the opener line names one anywhere —
+// `bash <<EOF`, `cat <<EOF | bash`, `sudo bash -s -- x <<EOF`, `/bin/sh <<EOF`.
+// `keepLength`: blank the bodies instead of cutting them, so offsets still match the raw text.
+const HEREDOC_OPEN_RE = /<<(-?)\s*(['"]?)([A-Za-z_][\w.-]*)\2/g;
+const SHELL_FED_RE = /(?:^|[\s|;&(/\\])(?:bash|sh|zsh|dash|ksh|pwsh|powershell)(?:\.exe)?(?=[\s;&|)]|$)/i;
+// A PowerShell here-string: data, unless piped on into a shell (`| iex`, `| powershell -`).
+const HERE_STRING_RE = /@(['"])\r?\n[\s\S]*?\r?\n\1@([^\n]*)/g;
+const HERE_STRING_FED_RE = /^\s*\|\s*(?:Invoke-Expression|iex|powershell|pwsh)\b/i;
+const blank = (s) => s.replace(/[^\n]/g, " ");
+function heredocBodiesOut(cmd, keepLength = false) {
+  let out = "";
+  let from = 0;
+  HEREDOC_OPEN_RE.lastIndex = 0;
+  let m;
+  while ((m = HEREDOC_OPEN_RE.exec(cmd)) !== null) {
+    if (cmd[m.index + 2] === "<" || cmd[m.index - 1] === "<") continue; // `<<<`, not a heredoc
+    const eol = cmd.indexOf("\n", m.index);
+    if (eol === -1) break;
+    const term = new RegExp("^" + (m[1] ? "\\t*" : "") + escapeRe(m[3]) + "\\r?$", "m");
+    const t = term.exec(cmd.slice(eol + 1));
+    if (!t) continue; // unterminated: the shell reads to the end; leave it as it was
+    const end = eol + 1 + t.index + t[0].length;
+    const opener = cmd.slice(cmd.lastIndexOf("\n", m.index - 1) + 1, eol);
+    if (!SHELL_FED_RE.test(opener)) {
+      out += cmd.slice(from, eol + 1) + (keepLength ? blank(cmd.slice(eol + 1, end)) : "");
+      from = end;
+    }
+    HEREDOC_OPEN_RE.lastIndex = end; // an opener inside the body is the body's text
+  }
+  out += cmd.slice(from);
+  return out.replace(HERE_STRING_RE, (all, q, after) => {
+    if (HERE_STRING_FED_RE.test(after)) return all;
+    return keepLength ? "@" + q + blank(all.slice(2, all.length - after.length - 2)) + q + "@" + after : "@" + q + q + "@" + after;
+  });
+}
 
 function collectWrites(fullCmd, step, out) {
   // Cap the scan: these patterns are quadratic on a long unbroken path-like token, and the Stop
   // hook has a timeout to respect. A write target this far into one command is not worth it.
-  const cmd = fullCmd.slice(0, 4000);
-  const cdDir = throwawayCd(cmd);
+  // Bodies out first, so a long one cannot push a real target past the cap either.
+  const cmd = heredocBodiesOut(fullCmd).slice(0, 4000);
+  const cd = throwawayCd(cmd); // offsets of `cmd`, the same text the matches below index
   let seen = 0;
   for (const re of [WRITE_TARGET_RE, INPLACE_TARGET_RE, PS_WRITE_TARGET_RE]) {
     re.lastIndex = 0;
@@ -204,7 +267,7 @@ function collectWrites(fullCmd, step, out) {
     while ((m = re.exec(cmd)) !== null) {
       const file = m[2] || m[1];
       if (file) {
-        out.push({ step, tool: "shell", file: underCd(cdDir, file) });
+        out.push({ step, tool: "shell", file: underCd(cd, file, m.index) });
         seen += 1;
       }
     }
@@ -267,16 +330,17 @@ function scriptTargets(body) {
 // `scripts` maps a script file authored earlier in this task to its body; a command that runs one
 // of them under an interpreter is charged that body's targets.
 function collectScriptWrites(cmd, step, out, scripts) {
-  const cdDir = throwawayCd(cmd);
-  const charge = (body) => {
+  const cd = throwawayCd(cmd);
+  // `at`: where the script runs in the command — a move before it is where its paths start.
+  const charge = (body, at) => {
     const targets = scriptTargets(body);
     if (targets === null) return;
     if (targets.length === 0) out.push({ step, tool: "script", file: "", unknown: true });
-    for (const file of targets) out.push({ step, tool: "script", file: underCd(cdDir, file) });
+    for (const file of targets) out.push({ step, tool: "script", file: underCd(cd, file, at) });
   };
   INTERPRETER_HEREDOC_RE.lastIndex = 0;
   let m;
-  while ((m = INTERPRETER_HEREDOC_RE.exec(cmd)) !== null) charge(m[3]);
+  while ((m = INTERPRETER_HEREDOC_RE.exec(cmd)) !== null) charge(m[3], m.index);
   SCRIPT_HEREDOC_RE.lastIndex = 0;
   while ((m = SCRIPT_HEREDOC_RE.exec(cmd)) !== null) {
     if (THROWAWAY_RE.test(m[2])) scripts.set(m[2], m[5]);
@@ -287,8 +351,11 @@ function collectScriptWrites(cmd, step, out, scripts) {
     // bounded on both sides: `python prefix.py` must not be charged with fix.py's targets.
     const base = file.split(/[\\/]/).pop();
     if (!base) continue;
-    const bounded = new RegExp("(?<![\\w.-])" + escapeRe(base) + "(?![\\w-])");
-    if (bounded.test(cmd)) charge(body);
+    // Where it RUNS: the last mention — `cat > fix.py <<EOF … EOF; cd <scratch>; python fix.py`
+    // names it first where it is written.
+    const bounded = new RegExp("(?<![\\w.-])" + escapeRe(base) + "(?![\\w-])", "g");
+    const runs = [...cmd.matchAll(bounded)];
+    if (runs.length) charge(body, runs[runs.length - 1].index);
   }
 }
 
@@ -514,10 +581,12 @@ function buildDigest(records) {
           targeted: testTargeted(withoutHeredocs(ran)),
           testKey: testKey(withoutHeredocs(ran)),
           fmt: FMT_RE.test(bare),
-          leakMark: LEAK_MARK_RE.test(full),
-          releaseAck: RELEASE_ACK_RE.test(full),
+          // Heredoc bodies out, quotes kept: a test appended through a heredoc that QUOTES
+          // `leak-check.js mark` ran no mark (and the quoted path of a real one must survive).
+          leakMark: LEAK_MARK_RE.test(withoutHeredocs(full)),
+          releaseAck: RELEASE_ACK_RE.test(withoutHeredocs(full)),
           ship: SHIP_RE.test(bare),
-          others: OTHERS_RE.test(full),
+          others: OTHERS_RE.test(withoutHeredocs(full)),
           pull: PULL_RE.test(bare),
           // A commit closes a review round's fix phase (gateFixBatch); `git add … && git commit`
           // often sits past the stored 300 characters.

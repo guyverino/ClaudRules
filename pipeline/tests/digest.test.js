@@ -118,6 +118,35 @@ const { lateRowsFor } = pipeline("lib/late.js");
   t(out.length === exp, "arrow: " + label, out.length + " recorded");
 });
 
+// --- a heredoc's body is data, its opener line is the command --------------------------------
+// 03.10: `cat >> tests/digest.test.js <<'EOF'` appending a test whose text held `cat > crates/a.rs`
+// recorded crates/a.rs as written — "Rust files were edited and cargo fmt never ran" on a task
+// that touched no Rust.
+[
+  ["cat >> tests/x.test.js <<'EOF'\nt(into(\"cat > crates/a.rs\"))\nEOF", ["tests/x.test.js"], "a redirect quoted in the body is data"],
+  ["cat > notes.md <<EOF\nsed -i s/a/b/ crates/y.rs\nEOF", ["notes.md"], "sed in the body is data"],
+  ["cat <<'EOF' > out/gen.rs\nfn a() {}\nEOF", ["out/gen.rs"], "a redirect after the opener on its line counts"],
+  ["bash <<'EOF'\ncat > crates/z.rs\nEOF", ["crates/z.rs"], "a body fed to a shell is commands"],
+  ["git commit -F - <<'EOF'\nfix: write > crates/a.rs\nEOF", [], "a commit message is data"],
+  ["cat > a.md <<'EOF'\nx\nEOF\ncat > crates/b.rs", ["a.md", "crates/b.rs"], "a write after the terminator counts"],
+  ["@'\nx > crates/a.rs\n'@ | Set-Content -Path docs/n.md", ["docs/n.md"], "a PowerShell here-string body is data"],
+  // A body fed to a shell is commands, wherever the opener line names the shell.
+  ["cat <<'EOF' | bash\ncat > crates/z.rs\nEOF", ["crates/z.rs"], "a body piped to bash is commands"],
+  ["sudo /bin/bash -s -- x <<EOF\ncat > crates/z.rs\nEOF", ["crates/z.rs"], "sudo /bin/bash -s is a shell"],
+  ["@'\ncat > crates/z.rs\n'@ | iex", ["crates/z.rs"], "a here-string piped to iex is commands"],
+  ["cat > fix.sh <<'EOF'\ncat > crates/z.rs\nEOF", ["fix.sh"], "a file named *.sh is not a shell"],
+  // Terminators the way the shell reads them.
+  ["cat > a.md <<'END-OF-FILE'\nx > crates/a.rs\nEND-OF-FILE", ["a.md"], "a hyphenated tag is a tag"],
+  ["cat > a.md <<'EOF'\n  EOF\nx > crates/a.rs\nEOF", ["a.md"], "an indented tag does not end a plain heredoc"],
+  ["cat > a.md <<-EOF\nx > crates/a.rs\n\tEOF\ncat > crates/b.rs", ["a.md", "crates/b.rs"], "<<- ends at a tab-indented tag"],
+  ["cat <<< word > out.md\nword", ["out.md"], "<<< is a here-string, not a heredoc"],
+].forEach(([cmd, exp, label]) => {
+  const out = [];
+  collectWrites(cmd, 1, out);
+  const got = out.map((w) => w.file);
+  t(got.join(",") === exp.join(","), "heredoc: " + label, JSON.stringify(got));
+});
+
 // --- a script that writes the tree is a write; the word "writes" is not ---------------------
 // Both shipped: a task that rewrote tab.rs twice through `python fix.py` / `python - <<EOF`
 // digested as `project 0`, and an analysis task whose `node -e` printed "writes:" digested as
@@ -297,6 +326,35 @@ const { lateRowsFor } = pipeline("lib/late.js");
   // A second move may go anywhere; `../` climbs out of the folder.
   t(into("cd " + scratch + "; node gen.js; cd D:/proj && cat > src/x.rs")[0] === "src/x.rs", "cd: a second cd turns re-rooting off", into("cd " + scratch + "; node gen.js; cd D:/proj && cat > src/x.rs"));
   t(into("cd " + scratch + "; cat > ../x.rs")[0] === "../x.rs", "cd: ../ is not scratch", into("cd " + scratch + "; cat > ../x.rs"));
+  // 03.10: `S=<scratch>; mkdir -p $S/ab && cd $S/ab && printf … > x.rs` — the move is not first and
+  // its folder sits in a variable; read as the project, x.rs raised "Rust files were edited".
+  const viaVar = "S=" + scratch + "; mkdir -p $S/ab && cd $S/ab && printf 'x' > x.rs";
+  t(into(viaVar)[0] === scratch + "/ab/x.rs", "cd: a later cd into a variable's scratch folder", into(viaVar));
+  // A target written BEFORE the move is relative to where the command started.
+  const before = "cat > crates/a.rs; cd " + scratch + "; cat > b.js";
+  t(into(before).join(",") === "crates/a.rs," + scratch + "/b.js", "cd: a write before the cd is not re-rooted", into(before));
+  // A move that ends inside the command: where the later writes land cannot be told — none re-rooted.
+  const sub = "(cd " + scratch + " && make); cat > crates/a.rs";
+  t(into(sub)[0] === "crates/a.rs", "cd: a subshell's move ends with it", into(sub));
+  const popd = "pushd " + scratch + "; cat > x.js; popd; cat > crates/a.rs";
+  t(into(popd).includes("crates/a.rs"), "cd: popd ends the move", into(popd));
+  // PowerShell assignment and a quoted folder with spaces.
+  const ps = "$S = \"" + scratch + "\"; Set-Location $S; cat > x.rs";
+  t(into(ps)[0] === scratch + "/x.rs", "cd: a PowerShell $S = … is expanded", into(ps));
+  const spaced = 'cd "C:/Users/u/AppData/Local/Temp/my dir/scratchpad"; cat > x.rs';
+  t(into(spaced)[0] === "C:/Users/u/AppData/Local/Temp/my dir/scratchpad/x.rs", "cd: a quoted folder with spaces", into(spaced));
+  // A `cd` line inside a heredoc body is the body's text, for the script scanner too.
+  const scriptOut = (cmd) => buildDigest([call("S1", "Bash", { command: cmd })]).writes.filter((w) => w.tool === "script").map((w) => w.file);
+  const bodyCd = "cd " + scratch + " && python - <<'EOF'\n# then: cd crates\nopen('out.json','w')\nEOF";
+  t(scriptOut(bodyCd)[0] === scratch + "/out.json", "cd: a cd inside a script body is not a second move", scriptOut(bodyCd));
+  // A script named where it is written, run after the move: its targets start where it runs.
+  const late = "cat > fix.py <<'EOF'\nopen('out.json','w')\nEOF\ncd " + scratch + " && python fix.py";
+  t(scriptOut(late).includes(scratch + "/out.json"), "cd: a script's position is where it runs", scriptOut(late));
+  // The pipeline's own commands quoted in a heredoc body ran nothing.
+  const quoted = buildDigest([call("S1", "Bash", { command: "cat >> t.test.js <<'EOF'\nnode leak-check.js mark; node leak-check.js ack-release; node leak-check.js others\nEOF" })]).shell[0];
+  t(!quoted.leakMark && !quoted.releaseAck && !quoted.others, "flags: quoted in a heredoc body is not a run", [quoted.leakMark, quoted.releaseAck, quoted.others].join());
+  const real = buildDigest([call("S1", "PowerShell", { command: 'node "C:\\Users\\u\\.claude\\pipeline\\leak-check.js" mark' })]).shell[0];
+  t(real.leakMark === true, "flags: a real quoted-path mark still counts", real.leakMark);
   // A background run killed half-way did not end green.
   const killed = buildDigest([
     call("S1", "PowerShell", { command: "cargo build -p a", run_in_background: true }),
