@@ -6,7 +6,43 @@
 // comments are the catalogue of shapes that fooled it once.
 
 const { CODE_EXT, TEST_RUN_RE, withoutTreeChecks, FMT_RE, BUILD_RE, LEAK_MARK_RE, OTHERS_RE, PULL_RE, RELEASE_ACK_RE, SHIP_RE, escapeRe, testTargeted, testKey } = require("./stacks");
-const { userTurnText, isTaskOpening, textOf, isAgentCall } = require("./transcript");
+const { userTurnText, isTaskOpening, textOf, isAgentCall, notificationText, NOTIFY_ID_RE } = require("./transcript");
+
+// When an agent's answer reached the orchestrator, as the step count at that moment — a tool call
+// numbered at or below it was launched before the answer was in. §9 needs it: a suite run beside
+// fix-diff and a suite run after its "0 high" answer look the same by launch step alone, and only
+// the first is waste. The answer is the first DELIVERED carrier: a synchronous tool_result, or a
+// task notification (`<tool-use-id>`) or hand-back (`<agent-message from="<agentId>">`) as a user
+// turn or a queued attachment. A `queue-operation` enqueue is not delivery: the orchestrator keeps
+// calling tools until the queue is drained, and counting from the enqueue would move the answer
+// earlier than it was read.
+const LAUNCH_STUB_RE = /Async agent launched/;
+const AGENT_ID_RE = /agentId:\s*([A-Za-z0-9_-]+)/;
+const HANDBACK_FROM_RE = /<agent-message\s+from="([A-Za-z0-9_-]+)"/g;
+function markAnswered(rec, step, byCall, byAgentId) {
+  if (!rec || (rec.type !== "user" && rec.type !== "attachment")) return;
+  const answer = (agent) => {
+    if (agent && agent.answeredAt === undefined) agent.answeredAt = step;
+  };
+  const c = rec.message && rec.message.content;
+  if (rec.type === "user" && Array.isArray(c)) {
+    for (const b of c) {
+      if (!b || b.type !== "tool_result" || b.is_error || !byCall.has(b.tool_use_id)) continue;
+      const text = textOf(b.content);
+      const id = text.match(AGENT_ID_RE);
+      if (id) byAgentId.set(id[1], b.tool_use_id);
+      if (!LAUNCH_STUB_RE.test(text)) answer(byCall.get(b.tool_use_id));
+    }
+  }
+  const text = notificationText(rec);
+  if (!text) return;
+  const callId = text.match(NOTIFY_ID_RE);
+  // A failed or killed run never answered (ledger.js reads it the same way): only a completed
+  // notification, or one without a status tag, is the answer.
+  const status = text.match(/<status>\s*([^<\s]+)\s*<\/status>/);
+  if (callId && (!status || status[1].toLowerCase() === "completed")) answer(byCall.get(callId[1]));
+  for (const m of text.matchAll(HANDBACK_FROM_RE)) answer(byCall.get(byAgentId.get(m[1])));
+}
 
 // What "this script writes a file" looks like in Python and JS: a write CALL, or an open() in a
 // write/append mode. `open(p)` alone is a read and must not count. A call, not a word:
@@ -283,7 +319,10 @@ function buildDigest(records) {
   let fullText = "";
   let step = 0;
   const scripts = new Map(); // script path -> body, for collectScriptWrites
+  const agentByCall = new Map(); // Agent tool_use id -> its d.agents entry
+  const callByAgentId = new Map(); // agentId (from the launch stub) -> Agent tool_use id
   for (const rec of records) {
+    markAnswered(rec, step, agentByCall, callByAgentId);
     // Hook output is recorded as an attachment; the leak gate (§5) is the one gate whose trigger
     // lives there — the SessionStart line "LEAK REVIEW PENDING" — and nowhere in the agent's text.
     if (rec.type === "attachment" && rec.attachment && rec.attachment.type === "hook_additional_context") {
@@ -327,12 +366,14 @@ function buildDigest(records) {
       step += 1;
       if (isAgentCall(b)) {
         const type = inp.subagent_type || "general-purpose";
-        d.agents.push({
+        const agent = {
           step,
           type,
           description: inp.description || "",
           promptHead: String(inp.prompt || "").slice(0, 500),
-        });
+        };
+        d.agents.push(agent);
+        agentByCall.set(b.id, agent);
         d.order.push(step + ":agent(" + type + ")");
       } else if (b.name === "Bash" || b.name === "PowerShell") {
         const full = String(inp.command || "");

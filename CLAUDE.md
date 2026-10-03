@@ -311,7 +311,11 @@ only if I say "0 findings" out loud.
 
 🚩 **The full test suite runs ONCE per task, at the end** (R2, R8): after the last edit — this
 batch, or the §8/§9 edits when they follow it, or the §5 build when nothing was fixed — never at
-the §5 gate and never after every edit.
+the §5 gate and never after every edit. **When §9 owes a `fix-diff`, the suite waits for its
+answer** — never started beside it or before it: finding a reason for one more edit is that
+agent's whole job, and the moment it finds one the suite runs again on the fixed tree. Beside
+`fix-diff` only the build and the linter run (the §5 re-run the batch owes anyway); the suite
+follows its answer — after its fix, or after "0 `high`".
 A red end-of-task run, its fix and the re-run is the one tolerated second run. It runs through the
 recorder, so the tree it passed on is remembered and the publish step does not test it again:
 `node "{{CLAUDE_HOME}}\pipeline\tested-tree.js" run -- <the repo's suite command>` — spelled
@@ -401,8 +405,11 @@ Below that condition I read my own delta and the build covers it. This is the on
 pipeline trusts my proofreading, and it is a measured call (R2), not a mood.
 
 🚩 **Gate:** it runs **once**. A confirmed `high` → fix, build, and I read that fix myself — no
-second run; the checker warns on it. Wrote nothing after §6 → §6 already covered the shipping
-tree; say so in §10.
+second run; the checker warns on it. The full suite (§6) is not started until this answer is
+in — the build and the linter may run beside it, the suite may not; the checker warns on a suite
+launched before the answer when its fix then re-ran it. A suite started after the answer that
+goes red, its fix and the re-run is §6's tolerated second run, not this. Wrote nothing after §6 → §6
+already covered the shipping tree; say so in §10.
 
 ## 10. Receipt — this block IS my completion message
 

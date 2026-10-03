@@ -78,6 +78,8 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // A cargo run is targeted when a bare word follows the subcommand that is neither an option nor
 // an option's value: `cargo test -p moon-chart hvol` is targeted, `cargo test -p moon-core --lib`,
 // `--workspace` and `cargo test $t` (a loop over targets) are full runs of what they name.
+// `--no-run` compiles the test targets and runs nothing: a build, so it is never a suite run — and
+// §9 allows the build beside fix-diff, which a "full" reading of it would flag.
 // Other stacks: unknown shape, counted as full — the conservative side for a bound.
 const CARGO_VALUE_OPTS = new Set([
   "-p", "--package", "--target", "--test", "--bin", "--example", "--bench", "--features", "--profile",
@@ -88,6 +90,8 @@ function testTargeted(command) {
   const m = String(command || "").match(CARGO_TEST_CLAUSE_RE);
   if (!m) return false;
   const tokens = m[1].trim().split(/\s+/).filter(Boolean);
+  const sep = tokens.indexOf("--"); // past it the words belong to the test binary, not to cargo
+  if (tokens.slice(0, sep === -1 ? tokens.length : sep).includes("--no-run")) return true;
   for (let i = 0; i < tokens.length; i++) {
     const tok = tokens[i];
     if (CARGO_VALUE_OPTS.has(tok)) {

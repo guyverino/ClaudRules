@@ -280,6 +280,28 @@ function gateTestRuns(c) {
   if (worst > 2) {
     c.lines.push("WARN  s6 - the full test suite ran " + worst + " times on one tree: once at the end of the task, after the §6 batch, is the shape; build between edits, test once");
   }
+  // §9: the suite waits for fix-diff's answer. Run beside it (or before it) on the tree it was
+  // reviewing, it is thrown away the moment fix-diff finds something — and that pair is exactly
+  // two full runs, inside the tolerance above, so it needs its own line. "Beside" is launched
+  // after the last code edit fix-diff was handed and BEFORE its answer arrived (answeredAt, in
+  // either order within the launching turn); a run after the answer that went red, its fix and the
+  // re-run is the §6 tolerance, not this. "Its fix" is a project edit after the answer that is not
+  // a document — a memory note (outside the project) or a doc re-runs nothing; a test file or a
+  // web asset the suite embeds does. An unresolved shell write (a log redirect) is left out: the
+  // gate prefers silence to a WARN with no fix behind it. No recorded answer (an older digest, an
+  // answer outside the window) stays silent: the launch step alone cannot tell the shapes apart.
+  const codeEdits = c.projectWrites.filter((w) => !/\.(?:md|txt|rst|adoc)$/i.test(w.file)).map((w) => w.step);
+  const fullRuns = runs.filter((r) => !targeted(r));
+  const besideDelta = d.agents.filter((a) => a.type === "fix-diff" && a.answeredAt !== undefined).some((a) => {
+    const reviewedFrom = Math.max(0, ...codeEdits.filter((s) => s < a.step));
+    const fixAt = firstOf(codeEdits.filter((s) => s > a.answeredAt), 0);
+    const beside = fixAt ? fullRuns.find((s) => s.step > reviewedFrom && s.step <= a.answeredAt) : undefined;
+    const rerun = beside ? fullRuns.find((s) => s.step > fixAt) : undefined;
+    return Boolean(rerun && !movedBetween(beside.step, rerun.step));
+  });
+  if (besideDelta) {
+    c.lines.push("WARN  s9 - the full suite ran before fix-diff answered, then again after its fix: beside fix-diff only the build and the linter run, the suite waits for its answer");
+  }
   const lastRun = new Map(); // test key -> step of its previous run
   let repeats = 0;
   for (const s of runs) {

@@ -120,6 +120,60 @@ const { sessionPreamble } = pipeline("lib/transcript.js");
     t(dg.shell[0].test === true && dg.shell[0].targeted === true && dg.shell[0].testKey === "cargo test -p moon-chart --target x86_64-pc-windows-msvc hvol", "tail: targeted-ness decided on the full command, stored", [dg.shell[0].targeted, dg.shell[0].testKey]);
     const four = [1, 2, 3, 4].map((i) => ({ step: i, command: dg.shell[0].command, build: true, test: true, targeted: true, testKey: "k" + i }));
     t(!/full test suite ran/.test(tail({ shell: four })), "tail: check() reads the stored targeted flag", "silent");
+    // §9: the suite waits for fix-diff. "fix-diff and the full run work in the background", then
+    // fix-diff found something and the full run went again — two runs, inside the tolerance, so
+    // the bound above never saw it. fix-diff launched at 5, its answer read at 7.
+    const fx = (step, file) => ({ step, tool: "Edit", file: file || "crates/a/src/y.rs" });
+    const fd = (step, answeredAt) => Object.assign(ag("fix-diff", step), { answeredAt });
+    const beside = { agents: [ag("flow", 2), fd(5, 7)], writes: [fx(1), fx(4), fx(8)] };
+    const wsSh = (step) => sh(ws, step);
+    const S9 = /WARN {2}s9 - the full suite ran before fix-diff answered/;
+    const with_ = (over) => tail(Object.assign({}, beside, over));
+    t(S9.test(with_({ shell: [wsSh(6), wsSh(10)] })), "tail: suite beside fix-diff, then again after its fix, warns", "warn");
+    // Same turn, shell call first: still launched before the answer.
+    t(S9.test(with_({ shell: [wsSh(4.5), wsSh(10)] })), "tail: suite launched just before fix-diff warns too", "warn");
+    t(!S9.test(with_({ shell: [sh("cargo clippy --workspace", 6), wsSh(10)] })), "tail: the linter beside fix-diff is the shape", "silent");
+    t(!S9.test(with_({ shell: [sh("cargo test --workspace --no-run", 6), wsSh(10)] })), "tail: compiling the tests beside fix-diff is a build", "silent");
+    t(!S9.test(with_({ writes: [fx(1), fx(4)], shell: [wsSh(6)] })), "tail: fix-diff found nothing — the beside run is the only one", "silent");
+    t(!S9.test(with_({ shell: [wsSh(3), wsSh(10)] })), "tail: a run on an older tree, before the last batch edit, is not this pattern", "silent");
+    t(!S9.test(with_({ shell: [wsSh(10)] })), "tail: suite after fix-diff's fix is the shape", "silent");
+    t(!S9.test(with_({ shell: [wsSh(6), sh("git pull --ff-only", 9), wsSh(10)] })), "tail: a pull between the two runs moved the tree", "silent");
+    // The tolerated shape: "0 high", the suite after the answer goes red, its fix, the re-run.
+    t(!S9.test(with_({ shell: [wsSh(7.5), wsSh(10)] })), "tail: a red run after the answer, its fix and the re-run is §6's tolerance", "silent");
+    // A memory note or a doc after the answer is not "its fix".
+    t(!S9.test(with_({ writes: [fx(1), fx(4), fx(8, "docs/x.md")], shell: [wsSh(6), wsSh(10)] })), "tail: a doc edit after the answer is not a fix", "silent");
+    // A web asset the suite embeds is a fix; a log redirect the digest could not resolve is not.
+    t(S9.test(with_({ writes: [fx(1), fx(4), fx(8, "crates/a/assets/app.html")], shell: [wsSh(6), wsSh(10)] })), "tail: a non-code asset fix still counts", "warn");
+    t(!S9.test(with_({ writes: [fx(1), fx(4), { step: 8, tool: "shell", file: "", unknown: true }], shell: [wsSh(6), wsSh(10)] })), "tail: an unresolved write is not a fix", "silent");
+    // No recorded answer: the launch step alone cannot tell the shapes apart.
+    t(!S9.test(with_({ agents: [ag("flow", 2), ag("fix-diff", 5)], shell: [wsSh(6), wsSh(10)] })), "tail: no recorded answer stays silent", "silent");
+    // A second fix-diff (already its own WARN) is judged too, not only the first.
+    t(S9.test(with_({ agents: [ag("flow", 2), fd(5, 7), fd(12, 14)], writes: [fx(1), fx(4), fx(15)], shell: [wsSh(13), wsSh(16)] })), "tail: every fix-diff run is judged", "warn");
+    {
+      const { testTargeted } = pipeline("lib/stacks.js");
+      t(testTargeted("cargo test --workspace --no-run --target x86_64-pc-windows-msvc") && !testTargeted("cargo test --workspace -- --no-run"), "stacks: --no-run is a build, past `--` it is the binary's", "build");
+    }
+    // The digest: answeredAt is the step count when the first DELIVERED carrier arrived.
+    {
+      const call = (id, name, input) => ({ type: "assistant", message: { content: [{ type: "tool_use", id, name, input }] } });
+      const result = (id, text) => ({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content: [{ type: "text", text }] }] } });
+      const lines = (...ls) => ls.join(String.fromCharCode(10));
+      const launch = [call("A1", "Agent", { subagent_type: "fix-diff", prompt: "p", run_in_background: true }), result("A1", lines("Async agent launched successfully.", "agentId: abc123 (internal ID)"))];
+      const suite = call("B1", "Bash", { command: ws });
+      const handback = { type: "user", message: { role: "user", content: lines("Another Claude session sent a message:", '<agent-message from="abc123">', "[Subagent hand-back] The report follows:", "  x.rs:1 — claim — high", "</agent-message>") } };
+      const notif = { type: "attachment", attachment: { type: "queued_command", prompt: lines("<task-notification>", "<task-id>abc123</task-id>", "<tool-use-id>A1</tool-use-id>", "<status>completed</status>") } };
+      const enqueue = { type: "queue-operation", operation: "enqueue", content: "<task-notification><tool-use-id>A1</tool-use-id></task-notification>" };
+      const later = call("B2", "Bash", { command: "cargo build" });
+      const at = (recs) => buildDigest(recs).agents[0].answeredAt;
+      t(at(launch.concat([suite, handback, later])) === 2, "digest: a hand-back marks the answer", at(launch.concat([suite, handback, later])));
+      t(at(launch.concat([suite, notif, later])) === 2, "digest: a queued notification marks the answer", at(launch.concat([suite, notif, later])));
+      t(at(launch.concat([enqueue, suite, later, notif])) === 3, "digest: an enqueue is not delivery", at(launch.concat([enqueue, suite, later, notif])));
+      t(at(launch.concat([suite])) === undefined, "digest: the launch stub is not an answer", at(launch.concat([suite])));
+      const killed = { type: "attachment", attachment: { type: "queued_command", prompt: lines("<task-notification>", "<tool-use-id>A1</tool-use-id>", "<status>killed</status>") } };
+      t(at(launch.concat([suite, killed, later])) === undefined, "digest: a killed run never answered", at(launch.concat([suite, killed, later])));
+      const sync = [call("A1", "Agent", { subagent_type: "fix-diff", prompt: "p" }), result("A1", "x.rs:1 — claim — high"), suite];
+      t(at(sync) === 1, "digest: a synchronous result is the answer", at(sync));
+    }
   }
   // §6: the confirmed fixes land as ONE batch. Seven `cargo check`, each after one fix, on one
   // review round — bounded after the first angle only; before the review edit→check is development.
