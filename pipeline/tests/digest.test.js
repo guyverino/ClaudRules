@@ -253,3 +253,65 @@ const { lateRowsFor } = pipeline("lib/late.js");
   const chain = 'node "C:/x/tested-tree.js" check -- cargo test --workspace || node "C:/x/tested-tree.js" run -- cargo test --workspace | Select-String "test result"';
   t(suite(chain) === true, "test: quoted check || run counts the run", suite(chain));
 }
+
+// How a shell command ended, and where a rootless target lives after `cd` into the scratchpad.
+{
+  const nl = String.fromCharCode(10);
+  const call = (id, name, input) => ({ type: "assistant", message: { content: [{ type: "tool_use", id, name, input }] } });
+  const result = (id, text, isError) => ({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, is_error: Boolean(isError), content: [{ type: "text", text }] }] } });
+  const one = (text, isError) => buildDigest([call("S1", "Bash", { command: "cargo check -p a" }), result("S1", text, isError)]).shell[0];
+  t(one("Exit code 101" + nl + "error[E0277]: x", true).failed === true, "result: is_error marks the run failed", true);
+  t(one("Exit code 2" + nl + "x").failed === true, "result: a non-zero exit line marks it failed", true);
+  t(one("    Finished `dev` profile").failed === false, "result: a clean run is not failed", false);
+  t(one("    Finished `dev` profile").buildRan === true, "result: build output says the build ran", true);
+  t(one("Traceback (most recent call last):" + nl + "AssertionError").editFailed === true, "result: a Traceback is a failed edit", true);
+  t(one("ok").resultAt === 1, "result: resultAt is the step it arrived at", one("ok").resultAt);
+  // A backgrounded run says how it ended in its notification, not in its launch result.
+  const bg = buildDigest([
+    call("S1", "PowerShell", { command: "cargo test --workspace", run_in_background: true }),
+    result("S1", "Command running in background with ID: b1"),
+    { type: "attachment", attachment: { type: "queued_command", prompt: ["<task-notification>", "<tool-use-id>S1</tool-use-id>", "<status>failed</status>", "</task-notification>"].join(nl) } },
+  ]).shell[0];
+  t(bg.failed === true, "result: a failed background notification marks the run", bg.failed);
+  // A refused Edit takes no step of its own, but is kept between its neighbours.
+  const refused = buildDigest([
+    call("E1", "Edit", { file_path: "crates/a/src/x.rs", old_string: "a", new_string: "b" }),
+    call("S2", "Bash", { command: "cargo check -p a" }),
+    result("E1", "String to replace not found", true),
+    result("S2", "Finished"),
+  ]);
+  t(refused.shell[0].step === 1 && refused.failedWrites.length === 1 && refused.failedWrites[0].step === 0.5, "result: a refused Edit is kept off the step count", JSON.stringify(refused.failedWrites));
+  t(refused.writes.length === 0, "result: a refused Edit is not a write", refused.writes.length);
+  // `cd <scratchpad> && cat > scan.js` wrote a scratch file: three such scripts read as "code was
+  // edited, no named review angle fired" on a research task.
+  const into = (cmd) => {
+    const out = [];
+    collectWrites(cmd, 1, out);
+    return out.map((w) => w.file);
+  };
+  const scratch = "/c/Users/u/AppData/Local/Temp/claude/s/scratchpad";
+  t(into('cd "' + scratch + '"; cat > scan.js <<\'EOF\'' + nl + "x" + nl + "EOF")[0] === scratch + "/scan.js", "cd: a rootless target after cd into the scratchpad is scratch", into('cd "' + scratch + '"; cat > scan.js'));
+  t(into("cd " + scratch + "; sed -i 's/a/b/' pertask.js")[0] === scratch + "/pertask.js", "cd: sed -i after cd into the scratchpad", into("cd " + scratch + "; sed -i 's/a/b/' pertask.js"));
+  t(into('cd "D:/proj" && cat > crates/a.rs')[0] === "crates/a.rs", "cd: after cd into the project the target stays relative", into('cd "D:/proj" && cat > crates/a.rs'));
+  t(into('cd "' + scratch + '"; cat > D:/proj/a.rs')[0] === "D:/proj/a.rs", "cd: a rooted target is not re-rooted", into('cd "' + scratch + '"; cat > D:/proj/a.rs'));
+  // A second move may go anywhere; `../` climbs out of the folder.
+  t(into("cd " + scratch + "; node gen.js; cd D:/proj && cat > src/x.rs")[0] === "src/x.rs", "cd: a second cd turns re-rooting off", into("cd " + scratch + "; node gen.js; cd D:/proj && cat > src/x.rs"));
+  t(into("cd " + scratch + "; cat > ../x.rs")[0] === "../x.rs", "cd: ../ is not scratch", into("cd " + scratch + "; cat > ../x.rs"));
+  // A background run killed half-way did not end green.
+  const killed = buildDigest([
+    call("S1", "PowerShell", { command: "cargo build -p a", run_in_background: true }),
+    result("S1", "Command running in background with ID: b1"),
+    { type: "attachment", attachment: { type: "queued_command", prompt: ["<task-notification>", "<tool-use-id>S1</tool-use-id>", "<status>killed</status>", "</task-notification>"].join(nl) } },
+  ]).shell[0];
+  t(killed.failed === true, "result: a killed background run is not green", killed.failed);
+  // apply-batch.js: the spec's FILE lines are the writes; --check writes nothing; an unknown spec
+  // is an unresolved write, never silence.
+  const spec = call("W1", "Write", { file_path: scratch + "/fix.spec", content: ["@@@ FILE crates/a/src/x.rs", "@@@ OLD", "a", "@@@ NEW", "b", "@@@ END", "@@@ FILE crates/b/src/y.rs", "@@@ OLD", "c", "@@@ NEW", "d", "@@@ END"].join(nl) });
+  const batch = (cmd) => buildDigest([spec, call("S1", "Bash", { command: cmd })]).writes.filter((w) => w.tool === "apply-batch");
+  const ran = batch('node "C:/u/.claude/pipeline/apply-batch.js" ' + scratch + "/fix.spec");
+  t(ran.map((w) => w.file).join(",") === "crates/a/src/x.rs,crates/b/src/y.rs", "batch: the spec's files are the writes", ran.map((w) => w.file).join(","));
+  t(batch("node apply-batch.js " + scratch + "/fix.spec --check").length === 0, "batch: --check writes nothing", 0);
+  const unknown = batch("node apply-batch.js other.spec");
+  t(unknown.length === 1 && unknown[0].unknown === true, "batch: an unknown spec is an unresolved write", JSON.stringify(unknown));
+  t(batch("node apply-batch.js --root D:/proj " + scratch + "/fix.spec").length === 2, "batch: --root before the spec", 2);
+}

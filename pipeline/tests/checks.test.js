@@ -177,13 +177,86 @@ const { sessionPreamble } = pipeline("lib/transcript.js");
   }
   // §6: the confirmed fixes land as ONE batch. Seven `cargo check`, each after one fix, on one
   // review round — bounded after the first angle only; before the review edit→check is development.
+  // Counted per review round, on green builds only, with §9's two builds left out (03.10: of six
+  // flagged tasks, most "pairs" were a second round's development, the fix-diff fix, or a red
+  // batch being repaired).
   {
     const angle = [ag("flow", 10)];
-    const pingPong = (from) => [0, 1, 2, 3].flatMap((i) => [{ step: from + 2 * i, tool: "Edit", file: "crates/a/src/x.rs" }]);
-    const checks = (from) => [0, 1, 2, 3].map((i) => sh("cargo check -p a", from + 2 * i + 1));
-    t(/WARN {2}s6 - fixes landed one at a time: 4 build\/check runs/.test(tail({ agents: angle, writes: pingPong(11), shell: checks(11) })), "batch: four edit→check pairs after the review warn", "warn");
-    t(!/fixes landed one at a time/.test(tail({ agents: angle, writes: pingPong(1), shell: checks(1) })), "batch: the same shape before the review is development", "silent");
-    t(!/fixes landed one at a time/.test(tail({ agents: angle, writes: pingPong(11), shell: [sh("cargo check -p a", 19), sh("cargo test --workspace", 20)] })), "batch: one build after the batch is the shape", "silent");
+    const edit = (step, file = "crates/a/src/x.rs") => ({ step, tool: "Edit", file });
+    const pingPong = (from, n = 4) => [...Array(n).keys()].map((i) => edit(from + 2 * i));
+    const checks = (from, n = 4) => [...Array(n).keys()].map((i) => sh("cargo check -p a", from + 2 * i + 1));
+    const warned = (over) => /fixes landed one at a time/.test(tail(over));
+    t(/WARN {2}s6 - fixes landed one at a time: 3 builds each after one more fix/.test(tail({ agents: angle, writes: pingPong(11, 3), shell: checks(11, 3) })), "batch: three fix→green-build pairs in one round warn", "warn");
+    t(!warned({ agents: angle, writes: pingPong(11, 2), shell: checks(11, 2) }), "batch: two pairs stay silent", "silent");
+    t(!warned({ agents: angle, writes: pingPong(1), shell: checks(1) }), "batch: the same shape before the review is development", "silent");
+    t(!warned({ agents: angle, writes: pingPong(11), shell: [sh("cargo check -p a", 19), sh("cargo test --workspace", 20)] }), "batch: one build after the batch is the shape", "silent");
+    // A red build is repaired, not followed by the next fix: the batch's own compile errors.
+    const red = checks(11).map((s, i) => Object.assign(s, { failed: i < 3 }));
+    t(!warned({ agents: angle, writes: pingPong(11), shell: red }), "batch: repairing a red build is not a pair", "silent");
+    // ...but a fix → red → fix → red loop past two repairs is the same habit.
+    const redLoop = checks(11, 6).map((s) => Object.assign(s, { failed: true }));
+    t(warned({ agents: angle, writes: pingPong(11, 6), shell: redLoop }), "batch: a red loop past two repairs warns", "warn");
+    // A build whose result never came back (an interrupted run) proves nothing either way.
+    const unanswered = checks(11).map((s) => Object.assign(s, { failed: false }));
+    t(!warned({ agents: angle, writes: pingPong(11), shell: unanswered }), "batch: unanswered builds grant no pairs", "silent");
+    // A document beside the fixes asks for no build and makes no pair.
+    t(!warned({ agents: angle, writes: pingPong(11).map((w) => Object.assign(w, { file: "docs/A.md" })), shell: checks(11) }), "batch: doc edits are not fixes", "silent");
+    // Two rounds in one task: the second stage's development belongs to neither round's fixes once
+    // the first round is closed by its commit — without the commit it still reads as fixes.
+    const twoRounds = (withCommit) => ({
+      agents: [ag("flow", 10), ag("flow", 40)],
+      writes: pingPong(11, 2).concat(pingPong(21, 3), pingPong(41, 2)),
+      shell: checks(11, 2).concat(withCommit ? [sh("git commit -m x", 16)] : [], checks(21, 3), checks(41, 2)),
+    });
+    t(!warned(twoRounds(true)), "batch: a commit closes the round, the next stage is development", "silent");
+    t(warned(twoRounds(false)), "batch: without a closer the next stage still reads as fixes", "warn");
+    // §9: the build beside fix-diff and the one fix after its answer are the shape, not pairs.
+    const withDelta = (agents) => ({
+      agents,
+      writes: [edit(11), edit(13), edit(17), edit(19)],
+      shell: [sh("cargo check -p a", 12), sh("cargo clippy -p a", 15), sh("cargo check -p a", 18), sh("cargo check -p a", 20)],
+    });
+    const delta = Object.assign(ag("fix-diff", 14), { answeredAt: 16 });
+    t(!warned(withDelta([ag("flow", 10), delta])), "batch: fix-diff's beside-build and its fix are allowed", "silent");
+    t(warned(withDelta([ag("flow", 10)])), "batch: the same builds without fix-diff are pairs", "warn");
+  }
+  // §6: a build launched before a failed edit reported back compiled a half-applied batch (03.10:
+  // three clippy runs beside a patch script that died at an AssertionError).
+  {
+    const call = (id, name, input) => ({ type: "assistant", message: { content: [{ type: "tool_use", id, name, input }] } });
+    const result = (id, text, isError) => ({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, is_error: Boolean(isError), content: [{ type: "text", text }] }] } });
+    const nl = String.fromCharCode(10);
+    const fix = ["cd /p && python - <<'EOF'", "p='crates/a/src/x.rs'", "s=open(p).read()", "open(p,'w').write(s)", "EOF"].join(nl);
+    const trace = ["Traceback (most recent call last):", "  File \"<stdin>\", line 3", "AssertionError: ('crates/a/src/x.rs', 'old')"].join(nl);
+    const red = ["Exit code 101", "error: field `x` is never read", "error: could not compile `a`"].join(nl);
+    const blind = (recs) => /launched before the edit beside them/.test(check(buildDigest(recs), "").lines.join(nl));
+    const specRecFor = () => call("W1", "Write", { file_path: "C:/Users/u/AppData/Local/Temp/claude/x/scratchpad/b.spec", content: ["@@@ FILE crates/a/src/x.rs", "@@@ OLD", "a", "@@@ NEW", "b", "@@@ END"].join(nl) });
+    t(blind([call("S1", "Bash", { command: fix }), call("S2", "PowerShell", { command: "cargo clippy -p a" }), result("S1", trace), result("S2", red, true)]), "blind: build beside a failed patch script warns", "warn");
+    t(!blind([call("S1", "Bash", { command: fix }), result("S1", trace), call("S2", "PowerShell", { command: "cargo clippy -p a" }), result("S2", red, true)]), "blind: a build after the failure was read is not blind", "silent");
+    t(!blind([call("S1", "Bash", { command: fix }), call("S2", "PowerShell", { command: "cargo clippy -p a" }), result("S1", "ok"), result("S2", "Finished")]), "blind: a patch that landed is fine", "silent");
+    t(blind([call("S1", "Bash", { command: fix + nl + "cargo clippy -p a" }), result("S1", trace + nl + "    Checking a v0.1.0" + nl + red, true)]), "blind: `fix; cargo` in one command that built warns", "warn");
+    // `&&` on the heredoc's opening line: the shell runs cargo only if python succeeded.
+    const fixAnd = fix.replace("<<'EOF'", "<<'EOF' && cargo clippy -p a");
+    t(!blind([call("S1", "Bash", { command: fixAnd }), result("S1", trace, true)]), "blind: `fix && cargo` stopped before the build", "silent");
+    const failedEdit = (file) => [call("E1", "Edit", { file_path: file, old_string: "a", new_string: "b" }), call("S2", "PowerShell", { command: "cargo check -p a" }), result("E1", "String to replace not found in file.", true), result("S2", "Finished")];
+    t(blind(failedEdit("crates/a/src/x.rs")), "blind: build beside a refused Edit warns", "warn");
+    t(!blind(failedEdit("C:/Users/u/AppData/Local/Temp/claude/x/scratchpad/s.js")), "blind: a refused scratch Edit leaves the tree alone", "silent");
+    // The build listed FIRST ran first (writing calls of one response run in order), on the tree
+    // as it was: the edit's failure changed nothing it compiled.
+    t(!blind([call("S2", "PowerShell", { command: "cargo check -p a" }), call("E1", "Edit", { file_path: "crates/a/src/x.rs", old_string: "a", new_string: "b" }), result("S2", "Finished"), result("E1", "String to replace not found", true)]), "blind: a build listed before the refused Edit is not blind", "silent");
+    // A command that only names the tool writes nothing.
+    t(!blind([specRecFor(), result("W1", "ok"), call("S1", "Bash", { command: "git add pipeline/apply-batch.js lib/digest.js" }), call("S2", "PowerShell", { command: "cargo check -p a" }), result("S1", "Traceback (most recent call last):"), result("S2", "Finished")]), "blind: naming apply-batch.js is not running it", "silent");
+    // Outside the project the refused Edit touches nothing the build reads.
+    const outside = [call("E1", "Edit", { file_path: "D:/other/x.rs", old_string: "a", new_string: "b" }), call("S2", "PowerShell", { command: "cargo check -p a" }), result("E1", "String to replace not found", true), result("S2", "Finished")];
+    t(!/launched before the edit/.test(check(buildDigest(outside), "D:/proj").lines.join(nl)), "blind: a refused Edit outside the project is not blind", "silent");
+    // The prescribed tool refusing its batch is a failed edit too: the build beside it compiled the old tree.
+    const refusedBatch = "apply-batch: 1 problem(s) across 1 hunk(s), NOTHING written:" + nl + "  crates/a/src/x.rs (hunk at spec line 1): OLD found 0 times";
+    t(blind([specRecFor(), result("W1", "ok"), call("S1", "Bash", { command: "node ~/.claude/pipeline/apply-batch.js C:/Users/u/AppData/Local/Temp/claude/x/scratchpad/b.spec" }), call("S2", "PowerShell", { command: "cargo check -p a" }), result("S1", refusedBatch, true), result("S2", "Finished")]), "blind: build beside a refused apply-batch warns", "warn");
+    const noSpec = "apply-batch: cannot read the spec: ENOENT: no such file or directory";
+    t(blind([call("S1", "Bash", { command: "node ~/.claude/pipeline/apply-batch.js C:/tmp/typo.spec" }), call("S2", "PowerShell", { command: "cargo check -p a" }), result("S1", noSpec, true), result("S2", "Finished")]), "blind: build beside a mistyped spec path warns", "warn");
+    // PowerShell 5.1 wraps native stderr under 2>&1 with an "At line:" locator: not a failed edit.
+    const psNoise = "cargo : warning: unused import" + nl + "At line:1 char:20" + nl + "    Checking a v0.1.0" + nl + "    Finished `dev` profile";
+    t(!blind([call("S1", "PowerShell", { command: fix.replace("python -", "python fix.py; python -") + nl + "cargo build -p a 2>&1" }), result("S1", psNoise)]), "blind: PowerShell's At-line locator is not an edit failure", "silent");
   }
   // §6 (R4): past 5 findings verify-finding is not optional, and the receipt cannot excuse it.
   {

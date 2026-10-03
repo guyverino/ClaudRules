@@ -44,6 +44,79 @@ function markAnswered(rec, step, byCall, byAgentId) {
   for (const m of text.matchAll(HANDBACK_FROM_RE)) answer(byCall.get(byAgentId.get(m[1])));
 }
 
+// How a shell command ended, read from its result once that is delivered. §6's fix batch needs
+// it twice over: a build that came back red is repaired, not followed by the next fix — the edit
+// after it is the batch's own compile error, not one fix at a time — and an edit command that
+// died half-way (a patch script's AssertionError, a heredoc the shell could not parse) leaves the
+// tree half-written, so a build launched before that result came back compiled whatever landed.
+// `failed`: the tool flagged it, or the result opens with a non-zero exit code; a background run
+// says so in its notification. `editFailed`: the text an interpreter or the shell prints when a
+// script stopped — a python script that dies still returns is_error false when a later clause of
+// the same command succeeded, so the exit code alone misses it. `resultAt`: the step count when
+// the result arrived; a tool call numbered at or below it was launched blind to it.
+const EXIT_FAIL_RE = /^\s*Exit code [1-9]\d*/;
+// apply-batch.js names its refusal; PowerShell reports a parse failure as ParserError (its "At
+// line:N char:M" locator is left out: 5.1 prints it for any native stderr under 2>&1, a build that
+// worked included); sed names its expression or the file it could not read.
+const EDIT_FAIL_RE = /Traceback \(most recent call last\)|unexpected EOF while looking for matching|^SyntaxError: |^\w*Error: .*\n\s+at |^apply-batch: (?:\d+ problem|malformed spec|a write failed|cannot read the spec)|^usage: node apply-batch\.js|ParserError|^sed: (?:-e expression|can't read)/im;
+// A build that printed its own output did run: the same-command shape `fix.py; cargo clippy`
+// is a blind build only when cargo actually went, and `fix.py && cargo clippy` stops before it.
+const BUILD_RAN_RE = /\b(?:Finished|Compiling|Checking|could not compile)\b|error\[E\d+\]|^error: |test result:/m;
+function markResults(rec, step, byCall) {
+  if (!rec) return;
+  const c = rec.message && rec.message.content;
+  if (rec.type === "user" && Array.isArray(c)) {
+    for (const b of c) {
+      if (!b || b.type !== "tool_result" || !byCall.has(b.tool_use_id)) continue;
+      const entry = byCall.get(b.tool_use_id);
+      if (entry.resultAt !== undefined) continue;
+      entry.resultAt = step;
+      if (!("failed" in entry)) continue; // a failed Write/Edit: its failure is already recorded
+      const text = textOf(b.content);
+      entry.failed = Boolean(b.is_error) || EXIT_FAIL_RE.test(text);
+      entry.editFailed = EDIT_FAIL_RE.test(text);
+      entry.buildRan = BUILD_RAN_RE.test(text);
+    }
+  }
+  // A backgrounded command's launch result says nothing about how it ended; its notification does.
+  const text = notificationText(rec);
+  if (!text) return;
+  const callId = text.match(NOTIFY_ID_RE);
+  const status = text.match(/<status>\s*([^<\s]+)\s*<\/status>/);
+  const entry = callId && byCall.get(callId[1]);
+  // Anything but "completed" did not end green: a failed run, and a killed one too — a build stopped
+  // half-way says nothing about the tree, and the fix after it is not one more fix after a green one.
+  if (entry && "failed" in entry && status && status[1].toLowerCase() !== "completed") entry.failed = true;
+}
+
+// `node apply-batch.js <spec>` writes the files its spec names, and the command line shows none of
+// them. The spec is authored with the Write tool (the rule says so); its FILE lines are the
+// targets. A spec this task did not author is an unresolved write, never silence. `--check`
+// writes nothing.
+// A RUN of the tool — `node … apply-batch.js` — not a mention: `git add apply-batch.js x.js` or a
+// grep over it names the file and writes nothing.
+const BATCH_RUN_RE = /\bnode(?:\.exe)?\s+["']?[^"'\s]*apply-batch\.js["']?((?:\s+(?:--root\s+(["']?)[^"'\s]+\2|--check|(["']?)[^"'\s;&|]+\3))+)/i;
+const SPEC_FILE_LINE_RE = /^@@@ FILE (.+)$/gm;
+const normPath = (p) => String(p).replace(/^["']|["']$/g, "").replace(/\\/g, "/").toLowerCase();
+function collectBatchWrites(cmd, step, out, specs) {
+  const m = cmd.match(BATCH_RUN_RE);
+  if (!m || /(?:^|\s)--check\b/.test(m[1])) return;
+  const args = m[1].replace(/--root\s+(["']?)[^"'\s]+\1/, " ").trim().split(/\s+/).filter((a) => a && !a.startsWith("--"));
+  const arg = args.length ? normPath(args[0]) : "";
+  const base = arg.split("/").pop();
+  // The same path first; failing that, the LATEST spec of that name — two `fix.spec` in different
+  // folders must not resolve to the older one.
+  const all = [...specs];
+  const spec = !arg ? undefined : all.find(([file]) => normPath(file) === arg) || all.reverse().find(([file]) => normPath(file).split("/").pop() === base);
+  if (!spec) {
+    out.push({ step, tool: "apply-batch", file: "", unknown: true });
+    return;
+  }
+  SPEC_FILE_LINE_RE.lastIndex = 0;
+  let f;
+  while ((f = SPEC_FILE_LINE_RE.exec(spec[1])) !== null) out.push({ step, tool: "apply-batch", file: f[1].trim() });
+}
+
 // What "this script writes a file" looks like in Python and JS: a write CALL, or an open() in a
 // write/append mode. `open(p)` alone is a read and must not count. A call, not a word:
 // `console.log("writes:", n)` in an inspection script is not a write, and a bare `\bwrite` matched
@@ -99,10 +172,31 @@ const NOT_A_WRITE_RE = new RegExp(
 // and testing the whole string would hide it behind the harmless first clause.
 const CLAUSE_SPLIT_RE = new RegExp("&&|\\|\\||;|\\n");
 
+// `cd <scratchpad> && cat > scan.js …` or `…; sed -i … scan.js`: a rootless target is relative to
+// the folder the command moved into, not to the project. Read as the project, three inspection
+// scripts written into the scratchpad came back as "code was edited, no named review angle
+// fired" on a task that touched no project file. Only a move into a throwaway folder re-roots
+// the target: after `cd <project>` the rootless path already means what inProject reads it as.
+const CD_RE = /^\s*(?:cd|Set-Location|pushd|Push-Location)\s+(?:-(?:Path|LiteralPath)\s+)?(["']?)([^"'\s;&|]+)\1/i;
+const THROWAWAY_DIR_RE = /(?:^|[\\/])(?:scratchpad|temp|tmp)(?:[\\/]|$)/i;
+const ROOTED_RE = /^(?:[a-z]:[\\/]|[\\/]|~|\$)/i;
+// One leading move only: a second `cd` in the same command may go anywhere — into the project —
+// and then no rootless target can be placed with confidence; read as the project, the old way.
+const ANY_CD_RE = /(?:^|[\s;&|(])(?:cd|Set-Location|pushd|Push-Location)\s/gi;
+function throwawayCd(cmd) {
+  const m = cmd.match(CD_RE);
+  if (!m || !THROWAWAY_DIR_RE.test(m[2])) return "";
+  if ((cmd.match(ANY_CD_RE) || []).length > 1) return "";
+  return m[2].replace(/[\\/]+$/, "");
+}
+// `../x.rs` climbs out of the folder, so it is not scratch merely for starting there.
+const underCd = (dir, file) => (dir && !ROOTED_RE.test(file) && !file.startsWith("..") ? dir + "/" + file : file);
+
 function collectWrites(fullCmd, step, out) {
   // Cap the scan: these patterns are quadratic on a long unbroken path-like token, and the Stop
   // hook has a timeout to respect. A write target this far into one command is not worth it.
   const cmd = fullCmd.slice(0, 4000);
+  const cdDir = throwawayCd(cmd);
   let seen = 0;
   for (const re of [WRITE_TARGET_RE, INPLACE_TARGET_RE, PS_WRITE_TARGET_RE]) {
     re.lastIndex = 0;
@@ -110,7 +204,7 @@ function collectWrites(fullCmd, step, out) {
     while ((m = re.exec(cmd)) !== null) {
       const file = m[2] || m[1];
       if (file) {
-        out.push({ step, tool: "shell", file });
+        out.push({ step, tool: "shell", file: underCd(cdDir, file) });
         seen += 1;
       }
     }
@@ -173,11 +267,12 @@ function scriptTargets(body) {
 // `scripts` maps a script file authored earlier in this task to its body; a command that runs one
 // of them under an interpreter is charged that body's targets.
 function collectScriptWrites(cmd, step, out, scripts) {
+  const cdDir = throwawayCd(cmd);
   const charge = (body) => {
     const targets = scriptTargets(body);
     if (targets === null) return;
     if (targets.length === 0) out.push({ step, tool: "script", file: "", unknown: true });
-    for (const file of targets) out.push({ step, tool: "script", file });
+    for (const file of targets) out.push({ step, tool: "script", file: underCd(cdDir, file) });
   };
   INTERPRETER_HEREDOC_RE.lastIndex = 0;
   let m;
@@ -319,10 +414,18 @@ function buildDigest(records) {
   let fullText = "";
   let step = 0;
   const scripts = new Map(); // script path -> body, for collectScriptWrites
+  const specs = new Map(); // apply-batch spec path -> body, for collectBatchWrites
   const agentByCall = new Map(); // Agent tool_use id -> its d.agents entry
   const callByAgentId = new Map(); // agentId (from the launch stub) -> Agent tool_use id
+  const resultByCall = new Map(); // shell / failed-edit tool_use id -> its entry, for markResults
+  d.failedWrites = [];
+  // The position of the latest call launched, a refused edit's half-step included: a result read
+  // at this position came back after every call up to it was out — the edit listed after a build
+  // in one response among them.
+  let launched = 0;
   for (const rec of records) {
     markAnswered(rec, step, agentByCall, callByAgentId);
+    markResults(rec, launched, resultByCall);
     // Hook output is recorded as an attachment; the leak gate (§5) is the one gate whose trigger
     // lives there — the SessionStart line "LEAK REVIEW PENDING" — and nowhere in the agent's text.
     if (rec.type === "attachment" && rec.attachment && rec.attachment.type === "hook_additional_context") {
@@ -361,9 +464,21 @@ function buildDigest(records) {
       // A tool call whose result came back is_error did not happen: a nonexistent agent type, an
       // Edit whose string did not match. Shell is the exception - a command that exited non-zero
       // still ran, and dropping it would erase build attempts and writes made before the failure.
-      if (b.name !== "Bash" && b.name !== "PowerShell" && failed.has(b.id)) continue;
+      if (b.name !== "Bash" && b.name !== "PowerShell" && failed.has(b.id)) {
+        // An edit that did not land is still evidence: a build launched beside it compiled a tree
+        // without it. It takes no step of its own — the numbering every gate compares stays as it
+        // was — and sits between the call before it and the call after it.
+        if (b.name === "Write" || b.name === "Edit" || b.name === "NotebookEdit") {
+          const miss = { step: step + 0.5, file: (b.input && b.input.file_path) || "" };
+          d.failedWrites.push(miss);
+          resultByCall.set(b.id, miss);
+          launched = miss.step;
+        }
+        continue;
+      }
       const inp = b.input || {};
       step += 1;
+      launched = step;
       if (isAgentCall(b)) {
         const type = inp.subagent_type || "general-purpose";
         const agent = {
@@ -382,7 +497,7 @@ function buildDigest(records) {
         // `tested-tree.js check -- cargo test …` names a suite and runs nothing: neither a build
         // nor a test run, and its clause must not lend a later real run its key or its scope.
         const ran = withoutTreeChecks(full);
-        d.shell.push({
+        const entry = {
           step,
           command: full.slice(0, 300),
           // Heredoc bodies out, quotes kept: a test file written through a heredoc that MENTIONS
@@ -404,10 +519,20 @@ function buildDigest(records) {
           ship: SHIP_RE.test(bare),
           others: OTHERS_RE.test(full),
           pull: PULL_RE.test(bare),
-        });
+          // A commit closes a review round's fix phase (gateFixBatch); `git add … && git commit`
+          // often sits past the stored 300 characters.
+          commit: /\bgit\s+commit\b/.test(bare),
+          // Filled in by markResults when the result arrives; an unanswered call keeps `false`.
+          failed: false,
+          editFailed: false,
+          buildRan: false,
+        };
+        d.shell.push(entry);
+        resultByCall.set(b.id, entry);
         d.order.push(step + ":shell");
         collectWrites(full, step, d.writes);
         collectScriptWrites(full, step, d.writes, scripts);
+        collectBatchWrites(full, step, d.writes, specs);
         countSleep(d, bare);
       } else if (b.name === "Skill") {
         d.skills.push({ step, skill: inp.skill || "", args: inp.args || "" });
@@ -420,6 +545,7 @@ function buildDigest(records) {
         if (b.name === "Write" && SCRIPT_FILE_RE.test(inp.file_path || "") && THROWAWAY_RE.test(inp.file_path)) {
           scripts.set(inp.file_path, String(inp.content || ""));
         }
+        if (b.name === "Write" && /^@@@ FILE /m.test(String(inp.content || ""))) specs.set(inp.file_path || "", String(inp.content));
         d.order.push(step + ":" + b.name.toLowerCase());
       }
     }

@@ -328,9 +328,20 @@ failing case (`cargo test -p crate name`) is the build-equivalent and is not bou
 run **once per edit**: the same command again with nothing changed between only re-prints what
 was already on screen, and each re-run is a whole turn over the full context. The batch itself
 lands in **one pass**: every confirmed fix, then one build — not fix, check, next fix, next check
-(seven checks in 76 s on one round). The checker counts the full suite past two on one tree (a
-pull, rebase or switch puts a new tree under the next run), the repeat without an edit, and the
-fix-by-fix build ping-pong after the review.
+(seven checks in 76 s on one round). One pass is **atomic**: Edit calls in one response, or ONE
+spec through `node "{{CLAUDE_HOME}}\pipeline\apply-batch.js" <spec>` — it checks every hunk
+first, reports every stale `old` at once and writes nothing unless all match — never a hand-rolled
+replace script that asserts hunk by hunk and dies with half the files written. The `old` text is
+copied from a read made after the last edit to that region (§4's last bullet), not from a
+reviewer's quote or from memory. The build goes in the **next** response, after every edit
+reported success: never beside the edits in one response, never `fix.py; cargo …` (`&&` at
+most) — a build launched before the edit's result is in compiles whatever half of the batch
+landed (three red clippy runs on one round, 03.10). The checker counts the full suite past two on
+one tree (a pull, rebase or switch puts a new tree under the next run), the repeat without an
+edit, a build launched blind beside an edit that failed, and the fix-by-fix ping-pong after the
+review — per review round, closed by a commit or the full suite, as green builds each followed by
+one more code fix; repairing a red build and §9's builds (the one beside fix-diff, the one after
+its fix) are not pairs.
 
 ## 7. Runtime verification (the strongest gate)
 

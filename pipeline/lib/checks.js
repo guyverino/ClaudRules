@@ -82,6 +82,9 @@ function contextOf(d, cwd) {
     // A shell write whose target could not be resolved is reported, never silently counted as the
     // project: that false positive demanded this project's build for edits to the harness itself.
     unresolved: d.writes.filter((w) => w.unknown),
+    // A refused Write/Edit of a project file: the tree lacks it, so a build launched beside it is
+    // blind. Outside the project (the harness, another repo) it touches nothing this build reads.
+    failedProjectWrites: (d.failedWrites || []).filter((w) => !SCRATCH_RE.test(w.file) && inProject(w.file)),
     codeTouched: projectWrites.some((w) => CODE_FILE_RE.test(w.file)),
     // Files of CODE only (R5): tests and docs beside a fix do not make the delta wide.
     filesAfter: distinctFiles(projectWrites.filter((w) => firstAngle && w.step > firstAngle && CODE_FILE_RE.test(w.file) && !TEST_OR_DOC_RE.test(w.file))),
@@ -321,24 +324,106 @@ function gateTestRuns(c) {
 
 // §6: confirmed fixes land as ONE batch, then §5 runs once. The other shape is one fix, one
 // build, the next fix, the next build — seven `cargo check` in 76 s on one review round, each a
-// turn over an 800k context. Counted after the first angle: before the review, edit → check is
-// how development goes and is not bounded here.
+// turn over an 800k context. Before the review, edit → check is how development goes and is not
+// bounded here.
+// Counted PER REVIEW ROUND, and only the pairs that are the habit. Read against six flagged tasks
+// (03.10), the old count — every edit→build since the first angle — was mostly three legitimate
+// shapes: a task with two rounds charged the whole development of its second stage to the
+// first round (10 "pairs", 3 real); the one fix §9 allows after fix-diff's answer, then its
+// build; and a batch whose build came back red, repaired, rebuilt — the batch's own compile
+// error, not the next fix. Those three are left out; what remains is a green build followed by
+// one more fix. The one real loss in those tasks — a build launched beside a patch script that
+// died half-way — is gateBlindBuild's, not this count's.
 function gateFixBatch(c) {
   const d = c.d;
   if (!c.firstAngle) return;
-  let prev = c.firstAngle;
-  let pairs = 0;
-  // A project write, or a shell write whose target could not be resolved: a fix through an
+  // A fix is a CODE edit, or a shell write whose target could not be resolved: a fix through an
   // opaque patch script is the very shape of this loop, and reading only the resolved writes
-  // would let it pass in silence.
-  const edits = c.projectWrites.concat(c.unresolved);
-  for (const s of d.shell) {
-    if (s.step <= c.firstAngle || !s.build) continue;
-    if (edits.some((w) => w.step > prev && w.step <= s.step)) pairs += 1;
-    prev = s.step;
+  // would let it pass in silence. A document beside the fixes asks for no build.
+  // (CODE_FILE_RE carries `md` through CODE_EXT, for the write scanner — hence the document
+  // filter on top.)
+  const edits = c.projectWrites.filter((w) => CODE_FILE_RE.test(w.file) && !/\.(?:md|txt|rst|adoc)$/i.test(w.file)).concat(c.unresolved);
+  const editBetween = (a, b) => edits.some((w) => w.step > a && w.step <= b);
+  // A round opens at an angle launched after code was written since the previous launch: the
+  // agents of one batch go out together, a later launch with new code between reviews new code.
+  const angleSteps = d.agents.filter((a) => REVIEW_AGENTS.has(a.type)).map((a) => a.step).sort((a, b) => a - b);
+  const rounds = angleSteps.filter((s, i) => i === 0 || editBetween(angleSteps[i - 1], s));
+  // §9's allowance: fix-diff's findings are fixed and built once. The first build after the
+  // first edit that follows its answer is that build.
+  // And the build that goes out WITH fix-diff — the §5 re-run §9 names as the one thing that runs
+  // beside it — is the batch's own build, not one more pair.
+  const allowed = new Set();
+  for (const a of d.agents.filter((x) => x.type === "fix-diff")) {
+    const beside = d.shell.find((s) => s.build && s.step > a.step && !editBetween(a.step, s.step));
+    if (beside && (a.answeredAt === undefined || beside.step <= a.answeredAt)) allowed.add(beside.step);
+    if (a.answeredAt === undefined) continue;
+    const fixAt = firstOf(edits.filter((w) => w.step > a.answeredAt).map((w) => w.step), 0);
+    const build = fixAt ? d.shell.find((s) => s.build && s.step >= fixAt) : undefined;
+    if (build) allowed.add(build.step);
   }
-  if (pairs >= 4) {
-    c.lines.push("WARN  s6 - fixes landed one at a time: " + pairs + " build/check runs each after a fresh edit since the review; §6 lands the confirmed batch in one pass, then builds once");
+  // The fix phase of a round also ends where the round's work is closed: a commit, or the full
+  // suite (§6 runs it after the last fix). What is written after that is the next stage, built
+  // the way development builds — 19:00 commit, then stage 3's own compile loop, read as fixes.
+  const closers = d.shell.filter((s) => flag(s, "commit", /\bgit\s+commit\b/) || (flag(s, "test", TEST_RUN_RE) && !s.targeted)).map((s) => s.step);
+  let worst = 0;
+  // How the previous build ended. A digest from before the result fields existed has no `failed`
+  // at all and reads green, as the gate always did; a call whose result never arrived (an
+  // interrupted run) is unknown and grants neither a pair nor a repair.
+  const ended = (s) => (s.failed ? "red" : "failed" in s && s.resultAt === undefined ? "unknown" : "green");
+  rounds.forEach((start, i) => {
+    const next = i + 1 < rounds.length ? rounds[i + 1] : Infinity;
+    const end = Math.min(next, firstOf(closers.filter((s) => s > start), Infinity));
+    let prev = start;
+    let prevEnded = "green";
+    let pairs = 0;
+    let repairs = 0;
+    for (const s of d.shell) {
+      if (s.step <= start || s.step > end || !s.build) continue;
+      if (editBetween(prev, s.step) && !allowed.has(s.step)) {
+        // A red batch gets two repairs free — its compile errors, then its lints. Past that, a
+        // fix → red → fix → red loop is the same one-at-a-time habit with the errors as the list.
+        if (prevEnded === "green") pairs += 1;
+        else if (prevEnded === "red" && ++repairs > 2) pairs += 1;
+      }
+      prev = s.step;
+      prevEnded = ended(s);
+      if (prevEnded === "green") repairs = 0; // the next red batch gets its own two repairs
+    }
+    worst = Math.max(worst, pairs);
+  });
+  if (worst >= 3) {
+    c.lines.push("WARN  s6 - fixes landed one at a time: " + worst + " builds each after one more fix in one review round (a green build, or a red one past its second repair); §6 lands the confirmed batch in one pass, then builds once");
+  }
+}
+
+// §6: the build goes in the response AFTER the edits reported success. A build launched before an
+// edit's result came back — beside it in one response, or chained `fix.py; cargo clippy` — compiles
+// whatever part of the batch landed when the edit failed: a patch script stopped at its third
+// AssertionError, a heredoc the shell could not parse, an Edit whose old string was stale. Three
+// such clippy runs in five minutes on one task (03.10), each red on a half-written tree, each a turn.
+// "Failed" is read from the result: an Edit refused by the tool, a script's Traceback, the shell's
+// parse error. In one command, only a build that visibly ran counts (`fix.py && cargo …` stops).
+function gateBlindBuild(c) {
+  const d = c.d;
+  // A shell command counts as a failed edit only when it was writing the project: a scratch
+  // script that crashed on its own data leaves the tree as it was.
+  const touches = c.projectWrites.concat(c.unresolved);
+  const misses = c.failedProjectWrites.concat(d.shell.filter((s) => s.editFailed && touches.some((w) => w.step === s.step)));
+  if (!misses.length) return;
+  // Blind: the edit was launched first and the build before the edit's result was read. Calls of
+  // one response that write run one after another, so the build ran on the tree the failed edit
+  // left. A build listed BEFORE the edit ran first, on the tree as it was — the edit's failure
+  // changed nothing it compiled. In one command, only a build that visibly ran.
+  const concurrent = (m, b) => {
+    if (m.step === b.step) return Boolean(b.buildRan);
+    return m.step < b.step && m.resultAt !== undefined && b.step <= m.resultAt;
+  };
+  let blind = 0;
+  for (const b of d.shell) {
+    if (b.build && misses.some((m) => concurrent(m, b))) blind += 1;
+  }
+  if (blind) {
+    c.lines.push("WARN  s6 - " + blind + " build(s) launched before the edit beside them reported back, and that edit failed: the build compiled a half-applied batch; build in the next response, after every edit landed (apply-batch.js writes all or nothing)");
   }
 }
 
@@ -422,6 +507,7 @@ function check(d, cwd) {
   gateDelta(c);
   gateTestRuns(c);
   gateFixBatch(c);
+  gateBlindBuild(c);
   gateVerifyFinding(c);
   gateClassBounds(c);
   gateSleep(c);
