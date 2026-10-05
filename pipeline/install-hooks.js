@@ -5,6 +5,7 @@
 //   UserPromptSubmit -> reply-lang.js (pins the reply language from reply-lang.local; silent without it)
 //   SessionStart     -> leak-check.js status (one line when commits by others await a leak review)
 //   PreToolUse       -> no-poll.js on Bash|PowerShell (refuses a sleep loop or a 30 s+ wait, §7)
+//   env.CLAUDE_CODE_PLUGIN_DIRS -> every mod folder under pipeline/mods/
 // Run again after editing: it replaces its own entries and leaves every other hook untouched.
 
 const fs = require("fs");
@@ -133,6 +134,33 @@ install("SessionStart", "status", 15, leakCmd);
 // a task too late to save the turn that waited. Only the two shell tools; a Read never sleeps.
 install("PreToolUse", "", 10, noPollCmd, "Bash|PowerShell");
 
+// The mods under pipeline/mods/<name>/ (a folder with .claude-plugin/plugin.json) load from
+// CLAUDE_CODE_PLUGIN_DIRS in settings.json's env block, the one place Claude Code reads it from
+// besides the process environment. Our entries are replaced, a foreign folder in the list is kept,
+// and a list left empty is removed rather than written as "".
+const MODS = path.join(ROOT, ".claude", "pipeline", "mods");
+if (settings.env !== undefined && (typeof settings.env !== "object" || Array.isArray(settings.env))) {
+  console.error("env in " + SETTINGS + " is not an object - refusing to touch it");
+  process.exit(1);
+}
+const ourMod = (p) => path.resolve(p).toLowerCase().startsWith(path.resolve(MODS).toLowerCase() + path.sep);
+const mods = fs.existsSync(MODS)
+  ? fs
+      .readdirSync(MODS)
+      .map((d) => path.join(MODS, d))
+      .filter((d) => fs.existsSync(path.join(d, ".claude-plugin", "plugin.json")))
+      .sort()
+  : [];
+const env = settings.env || {};
+const dirs = String(env.CLAUDE_CODE_PLUGIN_DIRS || "")
+  .split(path.delimiter)
+  .filter((p) => p && !ourMod(p))
+  .concat(mods);
+if (dirs.length) env.CLAUDE_CODE_PLUGIN_DIRS = dirs.join(path.delimiter);
+else delete env.CLAUDE_CODE_PLUGIN_DIRS;
+if (Object.keys(env).length) settings.env = env;
+else delete settings.env;
+
 // Atomic replace: a crash mid-write must not leave the global settings truncated.
 const tmp = target + ".tmp." + process.pid;
 fs.writeFileSync(tmp, JSON.stringify(settings, null, 2), "utf8");
@@ -144,4 +172,5 @@ const count = (e) =>
 console.log("backup:", backup);
 console.log("Stop entries:", count("Stop"), "| UserPromptSubmit entries:", count("UserPromptSubmit"), "| SessionStart entries:", count("SessionStart"), "| PreToolUse entries:", count("PreToolUse"));
 console.log("other Stop hooks kept:", (check.hooks.Stop || []).length - count("Stop"));
+console.log("mods:", mods.length ? mods.map((d) => path.basename(d)).join(", ") : "none");
 console.log("keys intact:", Object.keys(check).join(", "));

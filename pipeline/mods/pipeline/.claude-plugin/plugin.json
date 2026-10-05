@@ -1,0 +1,20 @@
+{
+  "name": "pipeline",
+  "version": "0.1.0",
+  "description": "The working pipeline's live half: pins a by-hand gate-check to this session, shows the Stop hook's WARN lines and the session-start alarms above the prompt, delivers oversized SessionStart context whole, and attaches a §0 class hint to each prompt.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "classify": {
+      "type": "boolean",
+      "title": "§0 class hint",
+      "description": "Classify each typed prompt with the small fast model and attach the label as a hint for the model (and show it above the prompt)",
+      "default": true
+    },
+    "band": {
+      "type": "boolean",
+      "title": "Band above the prompt",
+      "description": "Show the session-start alarms, the gate-check WARN count and the class hint above the prompt",
+      "default": true
+    }
+  }
+}

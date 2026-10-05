@@ -6,7 +6,7 @@
 //
 // <repo-dir> defaults to the checkout install.js recorded in ~/.claude/pipeline/rules-repo.local.
 //
-// What goes in: CLAUDE.md, agents/*.md, pipeline/*.js, the Linux bundle, and — per --project —
+// What goes in: CLAUDE.md, agents/*.md, pipeline/*.js, the mods under pipeline/mods/, the Linux bundle, and — per --project —
 // that repo's gitignored .claude/skills/*/SKILL.md (they live outside the public tree and would
 // otherwise be lost with the machine). What stays out, on purpose: settings.json (machine-local
 // permissions and hooks), memory/ (project-private knowledge), ledger/digests (accounting data),
@@ -118,6 +118,18 @@ for (const f of fs.readdirSync(path.join(CLAUDE, "agents"))) if (f.endsWith(".md
 //    rules-repo.local are this machine's.
 const PIPE = path.join(CLAUDE, "pipeline");
 for (const rel of pipelineScripts(PIPE).concat(["install-pipeline.sh"])) put(path.join(PIPE, rel), "pipeline/" + rel);
+// 2b. the mods (Claude Code function-hooks plugins) under pipeline/mods/<name>/, every file of each
+//     but the declarations the engine lays into .claude-plugin/types/ at each load — they belong to
+//     the Claude Code build that wrote them, and the next load writes them again.
+const MODS = path.join(PIPE, "mods");
+function modFiles(dir, rel) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
+    const r = rel ? rel + "/" + d.name : d.name;
+    if (d.isDirectory()) return r.endsWith(".claude-plugin/types") ? [] : modFiles(path.join(dir, d.name), r);
+    return d.isFile() ? [r] : [];
+  });
+}
+if (fs.existsSync(MODS)) for (const rel of modFiles(MODS, "")) put(path.join(MODS, rel), "pipeline/mods/" + rel);
 // 3. project skills, keyed by the repo folder name
 for (const p of projects) {
   const skills = path.join(p, ".claude", "skills");
