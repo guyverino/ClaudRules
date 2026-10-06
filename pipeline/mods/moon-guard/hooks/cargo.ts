@@ -62,7 +62,7 @@ export function bare(command: string): string {
 }
 
 /** The command's simple commands: split at newlines, `;`, `&&`, `||` and pipes. */
-export function segments(command: string): string[] {
+function segments(command: string): string[] {
   return bare(command)
     .split(/\r?\n|;|&&|\|\||\|/)
     .map(s => s.trim())

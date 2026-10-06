@@ -159,10 +159,7 @@ So every publish reconciles against the open issues — not only when the task s
 
 ## D. Publish
 
-**Every push and `gh pr merge` below is held by the moon-guard mod** (`~/.claude/pipeline/mods/moon-guard`):
-it shows what the command sends or merges and waits up to 2 minutes for the developer's Proceed
-(or `/proceed`, typed before or during the hold). Say in one line what is about to go out before
-running it. A refusal carries the preview: it means nobody answered — ask, never re-run it in a loop.
+Say in one line what is about to go out before every push and `gh pr merge` below.
 
 11. Push the branch:
     - New branch: `git push -u origin <branch>`.
