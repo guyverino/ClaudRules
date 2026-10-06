@@ -523,7 +523,17 @@ person or nickname, path or secret name taken from the project I happen to be wo
 and fixtures use invented names (`origin/port-base`, `src/x.rs`). Before every `--push` I read the
 export's diff in the checkout — including the base64 bundle `pipeline/install-pipeline.sh`,
 decoded — and grep it for the current project's identifiers; a hit is fixed before the push, never
-after it. Once (2026-10-06) a private branch name reached that history through two test
+after it. `export-rules.js` enforces this itself against `~/.claude/pipeline/private-terms.local`
+(this machine's list, never exported; UTF-8 or UTF-16 with BOM): before anything is staged it reads
+every file the commit could carry by content and by name, the bundle decoded, the commit message
+and author — literally and separator-blind — and before a push every unpushed commit; a hit
+refuses. Without a usable list a dry export warns and a `--commit` is refused. A refused export
+leaves its unscreened copy in the checkout, uncommitted: never commit that by hand. A refused
+push leaves the new commit local: fix it (amend or rebase — unpushed commits only) and run the
+export with `--push` again; it pushes pending commits even when nothing new changed. A term that
+also folds into a public spelling (a domain vs a public org name) refuses every export — list
+the narrower private form instead. A new private
+project starts by adding its names (repo, branches, hosts, people) to that file. Once (2026-10-06) a private branch name reached that history through two test
 fixtures, and it stays there.
 
 ## The principle over all of it

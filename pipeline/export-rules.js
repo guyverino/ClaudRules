@@ -10,7 +10,8 @@
 // that repo's gitignored .claude/skills/*/SKILL.md (they live outside the public tree and would
 // otherwise be lost with the machine). What stays out, on purpose: settings.json (machine-local
 // permissions and hooks), memory/ (project-private knowledge), ledger/digests (accounting data),
-// rules-repo.local (where THIS machine keeps the checkout).
+// rules-repo.local (where THIS machine keeps the checkout), private-terms.local (the screen's
+// list of what this machine's projects call themselves — publishing it would be the leak).
 // The one rewrite on the way out: this machine's ~/.claude path becomes the placeholder spelled
 // in PLACEHOLDER below (the rules carry absolute paths because an agent has no shell to expand
 // `~`), so the repo names no user and install.js substitutes the target home. Everything else is
@@ -126,7 +127,8 @@ function modFiles(dir, rel) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
     const r = rel ? rel + "/" + d.name : d.name;
     if (d.isDirectory()) return r.endsWith(".claude-plugin/types") ? [] : modFiles(path.join(dir, d.name), r);
-    return d.isFile() ? [r] : [];
+    // *.local is this machine's (a term list, a preference) wherever it sits — never exported.
+    return d.isFile() && !d.name.endsWith(".local") ? [r] : [];
   });
 }
 if (fs.existsSync(MODS)) for (const rel of modFiles(MODS, "")) put(path.join(MODS, rel), "pipeline/mods/" + rel);
@@ -173,6 +175,21 @@ console.log("exported " + copied.length + " file(s) to " + repo + (removed.lengt
 // paths only. Anything else pending in the checkout still stays out.
 const OWNED = ["CLAUDE.md", "agents", "pipeline", "project-skills", "manifest.json", "install.js", "README.md", "LICENSE", "docs"];
 
+// The public-export screen (rules §11, Gate (public export)): the repo is public and its main
+// refuses force-pushes, so a project identifier that rides a commit stays in its history. Before
+// anything is staged, everything the commit could carry is read against
+// pipeline/private-terms.local (lib/screen.js `gate`): the owned paths in full, by content and by
+// name, the bundle decoded, the commit message and author. No usable term list: a dry export
+// warns, a commit is refused. On a refusal the checkout keeps the unscreened copy, uncommitted —
+// it holds hand-edited files (install.js, README) too, so it is not reset here; never commit it by hand.
+const screenLib = require("./lib/screen");
+const screened = screenLib.gate({ repo, pipeDir: PIPE, owned: OWNED, commitMsg });
+for (const l of screened.lines) (screened.ok && !/^WARNING/.test(l) ? console.log : console.error)(l);
+if (!screened.ok) {
+  console.error("Nothing staged, committed or pushed. Fix the source under ~/.claude (or the term, if it is wrong) and export again.");
+  process.exit(1);
+}
+
 if (commitMsg) {
   const git = (a) => execFileSync("git", a, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
   // Only what this script owns: an unrelated pending edit in the checkout must not ride the commit.
@@ -191,7 +208,22 @@ if (commitMsg) {
   } else {
     git(["commit", "-q", "--only", "-m", commitMsg, "--"].concat(owned));
     console.log("committed: " + git(["log", "-1", "--format=%h %s"]).trim());
-    if (push) {
+  }
+  // A push sends every commit the upstream lacks, not only this run's — and runs even when nothing
+  // new changed, so commits a refused push left behind (fixed since) still go out. Screen them all
+  // first; no upstream at all is pushGate's refusal too.
+  if (push) {
+    let pending = null;
+    try {
+      pending = screenLib.unpushed(repo).length;
+    } catch {
+      pending = null; // no upstream: pushGate says so and refuses
+    }
+    if (pending === 0) console.log("nothing to push");
+    else {
+      const pg = screenLib.pushGate({ repo, terms: screened.terms });
+      for (const l of pg.lines) (pg.ok ? console.log : console.error)(l);
+      if (!pg.ok) process.exit(1);
       git(["push", "-q"]);
       console.log("pushed");
     }

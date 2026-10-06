@@ -31,6 +31,7 @@
     "pipeline/lib/release.js",
     "pipeline/lib/repofile.js",
     "pipeline/lib/root.js",
+    "pipeline/lib/screen.js",
     "pipeline/lib/stacks.js",
     "pipeline/lib/transcript.js",
     "pipeline/make-bundle.js",
@@ -70,6 +71,7 @@
     "pipeline/tests/parallel.test.js",
     "pipeline/tests/release.test.js",
     "pipeline/tests/replylang.test.js",
+    "pipeline/tests/screen.test.js",
     "pipeline/tests/stacks.test.js",
     "pipeline/tests/stats.test.js",
     "pipeline/tests/testedtree.test.js"
