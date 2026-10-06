@@ -26,7 +26,7 @@ const PIPE = path.join(CLAUDE, "pipeline");
 // (lib/root.js pipelineScripts — the same list export-rules.js ships). settings.json deliberately
 // does NOT travel: on the source machine it carries Windows-only hooks and permission entries
 // full of local paths; the installer edits the target's settings.json in place instead, adding
-// just the five pipeline hooks. The list is built inside build(), so requiring this module for
+// just the six pipeline hooks. The list is built inside build(), so requiring this module for
 // rewriteForPosix has no side effect on a home with no agents/.
 function filesToPack() {
   return [
@@ -222,7 +222,7 @@ node "\$PREFIX/.claude/pipeline/install-hooks.js" --prefix "\$PREFIX"
 
 say ""
 say "done. Three things this bundle deliberately did NOT do:"
-say "  1. copy settings.json wholesale — only the five pipeline hooks were added; your"
+say "  1. copy settings.json wholesale — only the six pipeline hooks were added; your"
 say "     permissions, sounds and machine-specific hooks are untouched."
 say "  2. bring the PROJECT CLAUDE.md — it is gitignored and its build commands are"
 say "     Windows-specific. Write the Linux one in the repo checkout: build/lint/test/run as a"

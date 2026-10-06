@@ -20,14 +20,16 @@ function replyLang(who) {
 // The letters a language is written in, for the languages whose script tells them apart from
 // English. A Latin-script language (Spanish, Portuguese, …) gets null: its text and English share
 // one alphabet, so a script test cannot judge it, and guessing by word lists would refuse correct
-// questions. Matched on the language name as written in the file, English or native.
+// questions. Matched on the language name as written in the file, English or native, or on its
+// two-letter code alone ("ru", "uk") — a code is the other natural way to write the file, and
+// an unmatched name silently switches the guard off.
 const SCRIPTS = [
-  [/^(russian|ukrainian|belarusian|bulgarian|serbian|kazakh|русский|українська|беларуская|български|српски|қазақ)/i, /[Ѐ-ӿ]/],
-  [/^(greek|ελληνικά)/i, /[Ͱ-Ͽ]/],
-  [/^(hebrew|עברית)/i, /[֐-׿]/],
-  [/^(arabic|persian|farsi|العربية|فارسی)/i, /[؀-ۿ]/],
-  [/^(chinese|japanese|中文|日本語)/i, /[぀-ヿ一-鿿]/],
-  [/^(korean|한국어)/i, /[가-힯]/],
+  [/^(russian|ukrainian|belarusian|bulgarian|serbian|kazakh|русский|українська|беларуская|български|српски|қазақ|(ru|uk|be|bg|sr|kk)$)/i, /[Ѐ-ӿ]/],
+  [/^(greek|ελληνικά|el$)/i, /[Ͱ-Ͽ]/],
+  [/^(hebrew|עברית|he$)/i, /[֐-׿]/],
+  [/^(arabic|persian|farsi|العربية|فارسی|(ar|fa)$)/i, /[؀-ۿ]/],
+  [/^(chinese|japanese|中文|日本語|(zh|ja)$)/i, /[぀-ヿ一-鿿]/],
+  [/^(korean|한국어|ko$)/i, /[가-힯]/],
 ];
 
 function scriptOf(lang) {

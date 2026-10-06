@@ -93,7 +93,19 @@ const hook = (root) => spawnSync(process.execPath, [HOOK, "--prefix", root], { i
   t(ask(named).status === 0, "asklang: identifier-like labels under a Russian question pass", ask(named).stderr.slice(0, 120));
   // A Russian question whose options slipped into English is still a question in English to read.
   const mixed = [{ question: "Что делать с PR 2?", header: "PR 2", options: [opt("Follow-up on #887 now", "Drop my branch and open a new one.")] }];
-  t(ask(mixed).status === 2, "asklang: Russian question with English options refused", ask(mixed).status);
+  const mixedRun = ask(mixed);
+  t(mixedRun.status === 2 && /option 1 description/.test(mixedRun.stderr), "asklang: Russian question, English option description refused", mixedRun.stderr.slice(0, 200));
+  // The description threshold at its edge, and a command or identifiers standing alone.
+  const desc = (d) => ask([{ question: "Что запускать?", header: "Сборка", options: [opt("A", d)] }]).status;
+  t(desc("Keep going.") === 0, "asklang: two English words in a description pass", true);
+  t(desc("Keep going now.") === 2, "asklang: three English words in a description refused", true);
+  t(desc("cargo build -p moon-core --target x86_64-pc-windows-msvc") === 0, "asklang: a bare command description passes", true);
+  // Without the span removal this reads "test then the" — three plain words (a token glued to a
+  // backtick is not a plain word, the middle ones are).
+  t(desc("`cargo test all` then `make the tour`") === 0, "asklang: backtick spans are code", true);
+  t(desc("“Keep going” now.") === 2, "asklang: curly-quoted English words still count", true);
+  tFs.writeFileSync(file, "ru\n", "utf8");
+  t(ask(english).status === 2, "asklang: a language code (ru) is recognised", true);
   tFs.writeFileSync(file, "Spanish\n", "utf8");
   t(ask(english).status === 0, "asklang: a Latin-script language is not judged", true);
   tFs.writeFileSync(file, "Russian\n", "utf8");
@@ -125,7 +137,12 @@ const hook = (root) => spawnSync(process.execPath, [HOOK, "--prefix", root], { i
   const run = () => spawnSync(process.execPath, [INSTALL, "--prefix", root], { encoding: "utf8" });
   run();
   run();
-  const groups = JSON.parse(tFs.readFileSync(settings, "utf8")).hooks.PreToolUse.filter((g) => g.hooks.some((h) => /ask-lang\.js/.test(h.command)));
+  const pre = JSON.parse(tFs.readFileSync(settings, "utf8")).hooks.PreToolUse;
+  const of = (re) => pre.filter((g) => g.hooks.some((h) => re.test(h.command)));
+  const groups = of(/ask-lang\.js/);
   t(groups.length === 1 && groups[0].matcher === "AskUserQuestion", "asklang: installed once, AskUserQuestion only", groups.map((g) => g.matcher));
+  // Same event, per-script replace: the re-run must not drop its sibling on PreToolUse.
+  const sibling = of(/no-poll\.js/);
+  t(sibling.length === 1 && sibling[0].matcher === "Bash|PowerShell", "asklang: no-poll survives the re-install", sibling.map((g) => g.matcher));
   tFs.rmSync(root, { recursive: true, force: true });
 }

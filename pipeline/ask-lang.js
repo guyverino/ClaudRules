@@ -13,8 +13,16 @@
 // judged. A label and a header are names — "Geist Mono + ttf-parser", "moon-remote cores",
 // "debug\incremental": replaying the month's 61 real questions, judging labels refused four
 // correct Russian questions for exactly that, and an English question is caught by its question
-// text anyway. `preview` is not read either: it carries code and mockups. A Latin-script language (scriptOf → null)
-// is not checked at all, nor is a session with no reply-lang.local.
+// text anyway. `preview` is not read either: it carries code and mockups. A Latin-script
+// language (scriptOf → null) is not checked at all, nor is a session with no reply-lang.local.
+// Only plain words count as English: a token carrying a dash, a dot, a slash, a digit or an
+// underscore is a flag, a path or an identifier ("cargo build -p moon-core"), and a `backtick`
+// span is code — a Russian option may well be just that. A command made of plain words alone
+// ("git pull origin main") still reads as English; the refusal says to put it in backticks.
+// Only AskUserQuestion is guarded: the same month's prose to the developer, measured over 14
+// days of sessions, slipped into English about once per hundred messages (mostly the API's own
+// error lines), while these questions slipped twice in one session — the tool input is where
+// the ask loses.
 // Exit code 2 blocks the call and hands the reason to the orchestrator; anything else lets it
 // through. A payload this script cannot read lets the call through too — a hook that blocks on
 // its own failure would make every question unaskable.
@@ -27,7 +35,11 @@ const { replyLang, scriptOf } = require("./lib/lang");
 // carries its letters, and "Ship it?" is as English as a long one.
 const MIN_LATIN_WORDS = 3;
 const MIN_LATIN_WORDS_QUESTION = 1;
-const latinWords = (s) => (s.match(/[A-Za-z]{2,}/g) || []).length;
+const latinWords = (s) =>
+  s
+    .replace(/`[^`]*`/g, " ")
+    .split(/\s+/)
+    .filter((w) => /^[(\["'«“‘]*[A-Za-z]{2,}(['’][A-Za-z]+)?[)\]"'»”’,.;:!?…]*$/.test(w)).length;
 
 // A payload that failed JSON.parse (an unescaped Windows path in cwd — see lib/hook.js) still
 // carries the question fields intact, since the model's text was escaped properly; parseHook's
@@ -61,10 +73,10 @@ function main() {
   const english = [];
   const judge = (where, text, min) => {
     if (typeof text !== "string") return;
-    if (!letters.test(text) && latinWords(text) >= (min || MIN_LATIN_WORDS)) english.push(where + ' "' + text.slice(0, 60) + '"');
+    if (!letters.test(text) && latinWords(text) >= min) english.push(where + ' "' + text.slice(0, 60) + '"');
   };
   if (hook.malformed) {
-    for (const [key, text] of patternFields(raw)) judge(key, text, key === "question" ? MIN_LATIN_WORDS_QUESTION : 0);
+    for (const [key, text] of patternFields(raw)) judge(key, text, key === "question" ? MIN_LATIN_WORDS_QUESTION : MIN_LATIN_WORDS);
   }
   questions.forEach((q, i) => {
     if (!q || typeof q !== "object") return;
@@ -72,15 +84,16 @@ function main() {
     judge(at, q.question, MIN_LATIN_WORDS_QUESTION);
     (Array.isArray(q.options) ? q.options : []).forEach((o, j) => {
       if (!o || typeof o !== "object") return;
-      judge(at + " option " + (j + 1) + " description", o.description);
+      judge(at + " option " + (j + 1) + " description", o.description, MIN_LATIN_WORDS);
     });
   });
   if (!english.length) return 0;
   process.stderr.write(
     "ask-lang (reply language " + lang + "): refused — AskUserQuestion is read by the developer, " +
-      "so its question, header, option labels and descriptions are in " + lang + ". English here: " +
+      "so the question and its option descriptions are in " + lang + ". English here: " +
       english.join("; ") +
-      ". Ask again with every one of them in " + lang + " (identifiers, PR titles and code may stay as they are).\n"
+      ". Ask again with these in " + lang + ", and the header and option labels too unless they are names " +
+      "(identifiers, PR titles and code may stay as they are; a command goes in `backticks`).\n"
   );
   return 2;
 }
