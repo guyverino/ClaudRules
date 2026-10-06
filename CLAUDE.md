@@ -515,6 +515,17 @@ changed>" --push` (the checkout path comes from that file; a positional path ove
 Skipped, the checkout drifts behind this machine and the next install elsewhere brings back the
 old rules.
 
+🚩 **Gate (public export):** that repo is public and its `main` refuses force-pushes, so whatever
+an export carries is published for good — a later "neutral" commit does not take it back. Nothing
+from a project goes into anything under `~/.claude` that the export copies (rules text, agent
+files, scripts, comments, **test fixtures**, commit messages): no branch, repo, host, organisation,
+person or nickname, path or secret name taken from the project I happen to be working in. Examples
+and fixtures use invented names (`origin/port-base`, `src/x.rs`). Before every `--push` I read the
+export's diff in the checkout — including the base64 bundle `pipeline/install-pipeline.sh`,
+decoded — and grep it for the current project's identifiers; a hit is fixed before the push, never
+after it. Once (2026-10-06) a private branch name reached that history through two test
+fixtures, and it stays there.
+
 ## The principle over all of it
 
 **Model the runtime; don't scan lines.** "Find all problems" ≠ "find bugs in the shown code" —
