@@ -23,6 +23,8 @@ const hook = (root) => spawnSync(process.execPath, [HOOK, "--prefix", root], { i
   tFs.writeFileSync(file, "﻿\n  \nRussian\nnote: a second line must not leak\n", "utf8");
   const on = hook(root);
   t(on.status === 0 && /<reply-language>/.test(on.stdout) && /in Russian:/.test(on.stdout), "replylang: names the language", on.stdout.slice(0, 60));
+  // A project whose team writes commits in its own language must not be overruled every prompt.
+  t(/project's convention wins/.test(on.stdout) && !/commit messages, PR and issue text stay English/.test(on.stdout), "replylang: commit/PR language yields to the project", on.stdout.slice(-200));
   t(!/second line/.test(on.stdout), "replylang: only the first non-empty line", true);
   tFs.writeFileSync(file, "\n \n", "utf8");
   t(hook(root).stdout === "", "replylang: blank file, no output", true);

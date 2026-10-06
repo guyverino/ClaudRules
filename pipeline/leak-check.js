@@ -19,6 +19,11 @@
 //                   others past that marker and every open PR that touches one of them; `diff`
 //                   lists them first in the report. `mark` does not move this marker on purpose.
 //
+// "origin/main" in every mode is the WATCHED branch: main, unless the clone names another with
+// `git config leakcheck.branch <branch>` — for work based on a branch that is not main, where
+// main is not what gets built (lib/git.js `upstream`). On such a branch both marker files carry
+// a `-<hex of the branch name>` suffix (`branchKey`), so a review of one branch never clears another.
+//
 // The marker is per clone on purpose: a review done on this machine says nothing about another.
 // Build scripts, code generators and dependency code all run at COMPILE time, so the gate this
 // serves is "reviewed before the first build that includes them" — a build "just to see" is
@@ -32,7 +37,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { git, repoRoot, markerPath, mainTip, foreignCommits, fetchMain } = require("./lib/git");
+const { git, repoRoot, markerPath, upstream, upstreamTip, foreignCommits, fetchUpstream } = require("./lib/git");
 const { parallelReport, statusLine, openPRs } = require("./lib/parallel");
 const { readStdin, parseHook } = require("./lib/hook");
 const { escapeRe } = require("./lib/stacks");
@@ -229,7 +234,7 @@ function buildReport(root) {
   head.push(
     "repo: " + root + " · reviewed marker: " + f.base.slice(0, 12) +
       (f.markerBroken ? " (STORED MARKER NO LONGER RESOLVES — history rewritten? base fell back to your last own commit)" : f.firstRun ? " (first run: your last own commit)" : "") +
-      " · origin/main: " + f.tip.slice(0, 12)
+      " · " + upstream(root).remote + ": " + f.tip.slice(0, 12)
   );
   head.push("me: " + f.me + " · commits past marker: " + f.all.length + " · by others: " + f.foreign.length);
   if (!f.foreign.length) {
@@ -339,14 +344,59 @@ function main() {
   // and `others` is the command the rule prescribes before the first edit, where a stale
   // origin/main would miss exactly the commits it exists to show. Only where origin/main exists
   // at all: a repo without it has nothing to say, and must not pay a remote round trip to learn so.
-  const hasMain = git(["rev-parse", "--verify", "origin/main"], { cwd: root }) !== null;
+  // "origin/main" throughout means the watched branch (lib/git.js `upstream`): main, or the one
+  // this clone names in `git config leakcheck.branch`.
+  const up = upstream(root);
+  // A configured branch git cannot use, or one origin does not have, is said out loud: falling
+  // back to main or to silence would be a false clean in the one repo that asked to be watched.
+  // Spelled as a PENDING review on purpose: the digest and the §5 gate key on that phrase, so a
+  // build in a repo whose review cannot run warns until the config is fixed (`mark` refuses).
+  if (up.invalid) {
+    const msg = 'LEAK REVIEW PENDING: UNKNOWN — git config leakcheck.branch = "' + up.branch + '" is not a valid branch name — no gate in this repo watches anything until it is fixed (rules §1, §5).\n';
+    if (mode === "status") process.stdout.write(msg);
+    else {
+      process.stderr.write(msg);
+      process.exitCode = 1;
+    }
+    return;
+  }
+  const hasRef = () =>
+    git(["rev-parse", "--verify", "--quiet", up.remote], { cwd: root }) !== null ||
+    (up.configured && git(["rev-parse", "--verify", "--quiet", up.privateRef], { cwd: root }) !== null);
+  const fetching = mode === "status" || mode === "others";
+  let hasUpstream = hasRef();
   // `ack-release` and `mark` deliberately do NOT fetch: they record the tip the developer was
   // SHOWN. A fetch here could pull a commit that landed since the listing and pin the marker past
   // it — acknowledged unread. A stale tip errs the other way: what landed since stays ahead of
-  // the marker and is reported next time.
-  if ((mode === "status" || mode === "others") && hasMain) fetchMain(root);
+  // the marker and is reported next time. A configured branch this clone has no ref for yet
+  // gets its one bounded fetch BEFORE it is judged absent.
+  let fetchFailed = false;
+  if (fetching && (hasUpstream || up.configured)) {
+    fetchFailed = !fetchUpstream(root);
+    hasUpstream = hasRef();
+  }
+  const missing = 'LEAK REVIEW PENDING: UNKNOWN — git config leakcheck.branch = "' + up.branch + '" but there is no ' + up.remote + " (fetch failed, or the branch is gone) — nothing is watched here until the config or the remote is fixed (rules §1, §5).\n";
+  if (up.configured && !hasUpstream) {
+    // Nothing below could answer: `others` would print "0 commits by others" under the alarm,
+    // and `diff` a clean "nothing to review" — both false cleans.
+    if (mode === "status" || mode === "others") process.stdout.write(missing);
+    else {
+      process.stderr.write(missing);
+      process.exitCode = 1;
+    }
+    return;
+  }
+  // A configured branch whose fetch failed is read from the last ref this clone holds: say so,
+  // since a branch deleted on origin and a dropped network look the same from here. main stays
+  // silent on a failed fetch, as before — it is never deleted, and offline sessions are common.
+  if (fetching && up.configured && fetchFailed) {
+    process.stdout.write("LEAK CHECK: fetching " + up.remote + " failed (offline, or the branch was deleted on origin) — the lines below read the last fetched tip " + upstreamTip(root).slice(0, 12) + ", which may be stale.\n");
+  }
   if (mode === "status") {
-    if (!hasMain) return; // no such remote branch: nothing to say
+    if (!hasUpstream) {
+      if (up.configured) process.stdout.write(missing);
+      return; // no such remote branch and none asked for: nothing to say
+    }
     const f = foreignCommits(root);
     if (f.markerBroken) {
       const marker = markerPath(root);
@@ -359,11 +409,11 @@ function main() {
       }
     }
     if (!f.foreign.length) {
-      if (process.argv.includes("--verbose")) process.stdout.write("leak-check: no unreviewed commits by others on origin/main\n");
+      if (process.argv.includes("--verbose")) process.stdout.write("leak-check: no unreviewed commits by others on " + up.remote + "\n");
     } else {
       const who = [...new Set(f.foreign.map((c) => c.name))].join(", ");
       process.stdout.write(
-        "LEAK REVIEW PENDING: " + f.foreign.length + " commit(s) by others on origin/main not yet reviewed (" + who + "). Before the first build that includes them: " +
+        "LEAK REVIEW PENDING: " + f.foreign.length + " commit(s) by others on " + up.remote + " not yet reviewed (" + who + "). Before the first build that includes them: " +
           'node "' + __filename + '" diff --out <file>, then the leak-review agent on that file, then `mark`. Commits: ' +
           f.foreign.map((c) => c.sha.slice(0, 8)).join(" ") + "\n"
       );
@@ -390,9 +440,9 @@ function main() {
     return;
   }
   if (mode === "ack-release") {
-    const tip = mainTip(root);
+    const tip = upstreamTip(root);
     if (!tip) {
-      process.stderr.write("leak-check: no origin/main to acknowledge\n");
+      process.stderr.write("leak-check: no " + up.remote + " to acknowledge\n");
       process.exitCode = 1;
       return;
     }
@@ -420,9 +470,9 @@ function main() {
     return;
   }
   if (mode === "mark") {
-    const tip = mainTip(root); // the same tip the judgement used: the private fetched ref when ahead
+    const tip = upstreamTip(root); // the same tip the judgement used: the private fetched ref when ahead
     if (!tip) {
-      process.stderr.write("leak-check: no origin/main to mark\n");
+      process.stderr.write("leak-check: no " + up.remote + " to mark\n");
       process.exitCode = 1;
       return;
     }

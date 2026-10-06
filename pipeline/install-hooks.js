@@ -130,8 +130,9 @@ install("Stop", "digest", 20);
 install("UserPromptSubmit", "report", 10);
 // The reply language, one line per prompt (§0's English example decided it by chance once).
 install("UserPromptSubmit", "", 5, replyLangCmd);
-// Foreign commits on origin/main not yet leak-reviewed: one line at session start, or nothing.
-// It fetches main into a private ref (bounded to 6 s) and reads local git state; 15 s is plenty.
+// Foreign commits on the watched branch (origin/main, or `git config leakcheck.branch`) not yet
+// leak-reviewed: one line at session start, or nothing. It fetches that branch into a private
+// ref (bounded to 6 s) and reads local git state; 15 s is plenty.
 install("SessionStart", "status", 15, leakCmd);
 // A shell command that polls with sleep is refused before it runs (§7): the checker's WARN comes
 // a task too late to save the turn that waited. Only the two shell tools; a Read never sleeps.

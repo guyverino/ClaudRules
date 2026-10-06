@@ -166,11 +166,12 @@ function gateParallel(c) {
 // §5 leak gate: the session opened with LEAK REVIEW PENDING (hook attachment) and a build ran
 // before `leak-check.js mark` — the build scripts and code generators of the unreviewed commits
 // have then already executed. Order is by step; a mark that never came counts as "before". Any
-// build the stack table knows (BUILD_RE), not one toolchain's.
+// build the stack table knows (BUILD_RE), not one toolchain's. A mark that FAILED recorded
+// nothing (leak-check refuses it when the watched branch is invalid or absent) and clears nothing.
 function gateLeak(c) {
   const d = c.d;
   if (!d.leakPending) return;
-  const markStep = stepsWhere(d.shell, "leakMark", LEAK_MARK_RE);
+  const markStep = stepsWhere(d.shell.filter((s) => !s.failed), "leakMark", LEAK_MARK_RE);
   const firstMark = firstOf(markStep, Infinity);
   const earlyBuild = d.shell.find((s) => s.build && s.step < firstMark);
   if (earlyBuild && !skipDeclared(c.said, "leak|s5|§5")) {
@@ -187,7 +188,7 @@ function gateLeak(c) {
 function gateRelease(c) {
   const d = c.d;
   if (!d.releasePending) return;
-  const ackStep = stepsWhere(d.shell, "releaseAck", RELEASE_ACK_RE);
+  const ackStep = stepsWhere(d.shell.filter((s) => !s.failed), "releaseAck", RELEASE_ACK_RE); // a refused ack recorded nothing
   const firstAck = firstOf(ackStep, Infinity);
   const early = d.shell.find((s) => (s.build || flag(s, "ship", SHIP_RE)) && s.step < firstAck);
   const earlyPublish = d.skills.find((s) => /^publish$/i.test(s.skill) && s.step < firstAck) || (!ackStep.length && d.slashCommands.some((s) => /^\/?publish\b/.test(s)) ? { step: -1 } : undefined);

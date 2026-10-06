@@ -28,7 +28,9 @@ if (lang) {
       "line and the §10 receipt included — even when the prompt is only a paste, and even when a\n" +
       "template or example in the rules is spelled in English. AskUserQuestion is a message to the\n" +
       "developer too: its question, header, option labels and descriptions are in " + lang + ".\n" +
-      "Code, comments, log strings, commit messages, PR and issue text stay English, as CLAUDE.md says.\n" +
+      "Code, comments and log strings stay English. Commit messages, PR and issue text are English\n" +
+      "unless the project's own rule file (CLAUDE.md / AGENTS.md in the repo) sets another\n" +
+      "convention for them — the project's convention wins.\n" +
       "</reply-language>\n"
   );
 }

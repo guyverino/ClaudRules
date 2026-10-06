@@ -1,12 +1,13 @@
-// Parallel work: what others landed on main since this developer's last own commit, and what
-// they have open — the input of rules §1 ("do not build what someone already built"). The
-// `others` mode prints the full report; the SessionStart hook prints one line through statusLine.
+// Parallel work: what others landed on the watched branch (main, or `git config leakcheck.branch`)
+// since this developer's last own commit, and what they have open — the input of rules §1 ("do
+// not build what someone already built"). The `others` mode prints the full report; the
+// SessionStart hook prints one line through statusLine.
 
 const { execFileSync } = require("child_process");
-const { git, whoAmI, mainTip, parseLog, LOG_FORMAT } = require("./git");
+const { git, whoAmI, upstream, upstreamTip, parseLog, LOG_FORMAT } = require("./git");
 
 // --- parallel work ---------------------------------------------------------------------------
-// The window is "since my last own commit on main", not the leak marker: when I last published I
+// The window is "since my last own commit on the watched branch", not the leak marker: when I last published I
 // had rebased onto everything before it, so that is the last point where I knew what others were
 // doing. Newest first. A repo where nobody else commits returns nothing — that IS the test for
 // "a repo with other contributors"; no configuration says so.
@@ -20,7 +21,7 @@ const FILES_CAP = 100;
 function othersSince(root, opts) {
   const o = opts || {};
   const mine = o.mine || whoAmI(root).mine;
-  const tip = o.tip || mainTip(root);
+  const tip = o.tip || upstreamTip(root);
   if (!tip) return { commits: [], ownFound: true, window: 0, othersInWindow: 0, filesCapped: false };
   const bounded = { cwd: root, timeout: 4000 };
   // One log call carries the files too (`--name-only`, records separated by \x1e): a `diff-tree`
@@ -117,9 +118,10 @@ function parallelReport(root) {
   const p = openPRs(root);
   const out = [];
   out.push("# parallel work · " + new Date().toISOString());
-  if (o.unknown) out.push("commits by others on main since your last own commit: UNKNOWN (git log failed or timed out) — run `git log origin/main` by hand");
+  const remote = upstream(root).remote;
+  if (o.unknown) out.push("commits by others on " + remote + " since your last own commit: UNKNOWN (git log failed or timed out) — run `git log " + remote + "` by hand");
   else out.push(
-    "commits by others on main since your last own commit: " + o.commits.length +
+    "commits by others on " + remote + " since your last own commit: " + o.commits.length +
       (o.ownFound ? "" : " (no own commit in the last " + o.window + " — the window is capped, older work is not listed)") +
       (o.filesCapped ? " (files listed for the newest " + FILES_CAP + " only)" : "")
   );
@@ -136,7 +138,7 @@ function parallelReport(root) {
 // nothing, whatever gh says — the gate is N/A there by the rule's own words, and a false line
 // would drag every session through it. The gh call is bounded so a slow forge cannot hold the
 // session start; unavailable is said, not swallowed. `f` is foreignCommits' result (its tip is
-// the freshest view of main) and `script` the path the line tells the reader to run. `prs` is
+// the freshest view of the watched branch) and `script` the path the line tells the reader to run. `prs` is
 // an openPRs result the caller already paid for (the release-surface line needs the same list);
 // left out, the call is made here, and only where others commit.
 function statusLine(root, f, script, prs) {
@@ -154,7 +156,7 @@ function statusLine(root, f, script, prs) {
   }
   const subjects = o.commits.slice(0, 3).map((c) => c.subject.slice(0, 60)).join(" · ");
   return (
-    "PARALLEL WORK: " + o.commits.length + " commit(s) by others on main since your last own commit" + (subjects ? " (" + subjects + (o.commits.length > 3 ? " · …" : "") + ")" : "") +
+    "PARALLEL WORK: " + o.commits.length + " commit(s) by others on " + upstream(root).remote + " since your last own commit" + (subjects ? " (" + subjects + (o.commits.length > 3 ? " · …" : "") + ")" : "") +
       (o.ownFound ? "" : " [window capped at " + o.window + " — older work not counted]") +
       " · open PRs: " + (p.prs === null ? "unavailable (" + p.why + ")" : String(nPr) + (p.capped ? "+ (capped)" : "")) +
       '. Before the first edit of a task: node "' + script + '" others, then say in one line whether any of it already covers the task (rules §1).\n'

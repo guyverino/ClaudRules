@@ -283,6 +283,16 @@ const { sessionPreamble } = pipeline("lib/transcript.js");
   const lines = (recs) => check(dig(recs), "").lines.join("\n");
   const pendingBuild = [hook("Свежесть…\nLEAK REVIEW PENDING: 2 commit(s) by others …"), user("делай"), bash("b1", "cargo build -p x")];
   t(/WARN {2}s5 - LEAK REVIEW PENDING at session start, yet a build ran and the review was never marked/.test(lines(pendingBuild)), "leak gate: cargo without mark warns", "warn");
+  // A watched branch named by `git config leakcheck.branch`: the lines name origin/<branch>, and a
+  // branch the review cannot read is spelled as an UNKNOWN pending review — both must still arm.
+  const branchBuild = [hook("LEAK REVIEW PENDING: 1 commit(s) by others on origin/Dex-autoupdater not yet reviewed (X)"), user("делай"), bash("b1", "cargo build")];
+  t(/WARN {2}s5 - LEAK REVIEW PENDING at session start/.test(lines(branchBuild)), "leak gate: a configured branch's line arms it", "warn");
+  const brokenBuild = [hook('LEAK REVIEW PENDING: UNKNOWN — git config leakcheck.branch = "gone" but there is no origin/gone'), user("делай"), bash("b1", "cargo build")];
+  t(/WARN {2}s5 - LEAK REVIEW PENDING at session start/.test(lines(brokenBuild)), "leak gate: an unreadable configured branch arms it", "warn");
+  // leak-check refuses `mark` there (exit 1): a refused mark recorded nothing and must not clear the gate.
+  const refused = (id) => ({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, is_error: true, content: [{ type: "text", text: "Exit code 1\nLEAK REVIEW PENDING: UNKNOWN" }] }] } });
+  const refusedMark = [brokenBuild[0], user("делай"), bash("m1", 'node "C:/u/.claude/pipeline/leak-check.js" mark'), refused("m1"), bash("b1", "cargo build")];
+  t(/WARN {2}s5 - LEAK REVIEW PENDING at session start/.test(lines(refusedMark)), "leak gate: a refused mark does not clear it", "warn");
   // Any toolchain the stack table knows counts — the gate is about build scripts, not cargo.
   const npmBuild = [hook("LEAK REVIEW PENDING: 1 commit"), user("делай"), bash("b1", "npm ci")];
   t(/yet a build ran and the review was never marked/.test(lines(npmBuild)), "leak gate: npm ci without mark warns", "warn");
@@ -314,6 +324,8 @@ const { sessionPreamble } = pipeline("lib/transcript.js");
   const lines = (recs) => check(dig(recs), "").lines.join("\n");
   const pw = hook("LEAK REVIEW PENDING: 1 commit\nPARALLEL WORK: 3 commit(s) by others on main since your last own commit (x · y) · open PRs: 1. Before the first edit …");
   t(/WARN {2}s1 - PARALLEL WORK at session start, yet a project file was edited and leak-check\.js others never ran/.test(lines([pw, user("делай"), edit("e1", "crates/a/src/x.rs")])), "parallel: edit without others warns", "warn");
+  const pwBranch = hook("PARALLEL WORK: 2 commit(s) by others on origin/Dex-autoupdater since your last own commit (x) · open PRs: unavailable (gh). Before the first edit …");
+  t(/WARN {2}s1 - PARALLEL WORK at session start/.test(lines([pwBranch, user("делай"), edit("e1", "src/core/x.pas")])), "parallel: a configured branch's line arms it", "warn");
   t(/edited before leak-check\.js others ran/.test(lines([pw, user("делай"), edit("e1", "crates/a/src/x.rs"), bash("o1", 'node "C:/u/.claude/pipeline/leak-check.js" others')])), "parallel: others after the edit still warns", "warn");
   t(!/PARALLEL WORK at session start/.test(lines([pw, user("делай"), bash("o1", 'node "C:/u/.claude/pipeline/leak-check.js" others'), edit("e1", "crates/a/src/x.rs")])), "parallel: others before the edit is clean", "silent");
   t(!/PARALLEL WORK at session start/.test(lines([pw, user("делай"), bash("o1", "gh pr list --state open"), edit("e1", "crates/a/src/x.rs")])), "parallel: listing the PRs on the forge counts", "silent");

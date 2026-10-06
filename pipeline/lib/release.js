@@ -6,22 +6,23 @@
 // question for it: which commits by others, and which open pull requests, touched a declared
 // path and have not been read by this developer yet.
 //
-// Two windows, two readers. Commits on origin/main are judged against a marker of their own,
-// `.git/release-surface-seen` (`leak-check.js ack-release` moves it): the leak marker moves on a
+// Two windows, two readers. Commits on the watched branch (origin/main, or the one the clone names
+// in `git config leakcheck.branch`) are judged against a marker of their own,
+// `.git/release-surface-seen` (per branch, `branchKey`; `leak-check.js ack-release` moves it): the leak marker moves on a
 // leak VERDICT, and a release-path change must stay on screen until this developer has read that
 // diff by hand, verdict or not. Open pull requests have no marker — one stays on screen for as
 // long as it is open, which is the point. Nothing here is a verdict: the lines say WHAT to read.
 
 const fs = require("fs");
 const path = require("path");
-const { git, foreignSince } = require("./git");
+const { git, foreignSince, upstream, branchKey } = require("./git");
 const { section, backticked } = require("./repofile");
 
 const HEADING = "Release surface";
 
 function releaseMarkerPath(root) {
   const gitDir = git(["rev-parse", "--git-dir"], { cwd: root }) || ".git";
-  return path.resolve(root, gitDir, "release-surface-seen");
+  return path.resolve(root, gitDir, "release-surface-seen" + branchKey(upstream(root).branch));
 }
 
 // A backticked entry is a path pattern when it looks like one: a separator or a dot
@@ -67,7 +68,7 @@ function releaseChanges(root, base) {
   if (!patterns.length) return { declared: false, sections, patterns, commits: [], marker: "" };
   const marker = releaseMarkerPath(root);
   const f = foreignSince(root, marker);
-  // No marker yet: the base is this developer's last own commit on main — and it is PINNED here,
+  // No marker yet: the base is this developer's last own commit on the watched branch — and it is PINNED here,
   // now. Left floating, the developer's own next merge on top of a foreign release-path change
   // would move the base past it and the line would vanish with nothing acknowledged: exactly the
   // commit this check exists to keep on screen. A marker that does NOT resolve is never
@@ -78,9 +79,9 @@ function releaseChanges(root, base) {
   if (f.firstRun && !f.markerBroken && f.base) fs.writeFileSync(marker, f.base + "\n", "utf8");
   if (!f.foreign.length) return { declared: true, sections, patterns, commits: [], marker, tip: f.tip, base: f.base, firstRun: f.firstRun, markerBroken: f.markerBroken };
   // `--diff-merges=first-parent`: without it a merge commit lists NO files, and a change that
-  // reached main through a merge (an "evil merge" resolution included) would be invisible here.
+  // reached the watched branch through a merge (an "evil merge" resolution included) would be invisible here.
   const out = git(["log", "--format=%x1e%H", "--name-only", "--diff-merges=first-parent", f.base + ".." + f.tip], { cwd: root, timeout: 8000 });
-  if (out === null) return { declared: true, sections, patterns, commits: [], marker, tip: f.tip, base: f.base, unknown: true, markerBroken: f.markerBroken };
+  if (out === null) return { declared: true, sections, patterns, commits: [], marker, tip: f.tip, base: f.base, unknown: true, markerBroken: f.markerBroken, remote: upstream(root).remote };
   const filesOf = new Map();
   for (const block of out.split("\x1e").slice(1)) {
     const [sha, ...rest] = block.split("\n");
@@ -114,7 +115,7 @@ function releaseLines(rel, prs, prsWhy, script) {
   const out = [];
   if (!rel.declared) return "";
   if (rel.markerBroken) out.push("RELEASE SURFACE: the stored marker (" + rel.marker + ") did not resolve this run — git failed, history rewritten or object dropped; the window below starts at your last own commit " + (rel.base || "").slice(0, 8) + " and this line repeats until ack-release writes a tip.");
-  if (rel.unknown) out.push("RELEASE SURFACE: UNKNOWN — git log failed or timed out; read origin/main by hand for " + rel.patterns.map((p) => p.raw).join(", ") + ".");
+  if (rel.unknown) out.push("RELEASE SURFACE: UNKNOWN — git log failed or timed out; read " + (rel.remote || "origin/main") + " by hand for " + rel.patterns.map((p) => p.raw).join(", ") + ".");
   for (const c of rel.commits) out.push("RELEASE SURFACE CHANGED by " + c.name + " — " + c.sha.slice(0, 8) + " " + c.subject.slice(0, 70) + " — " + c.files.join(", "));
   if (rel.commits.length) {
     out.push(

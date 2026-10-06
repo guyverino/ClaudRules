@@ -13,7 +13,9 @@ proofreading; it does not survive an adversary. And a green build stays silent o
 defect. Those two blind spots shape every stage; §10 proves the pipeline ran.
 
 Language: everything that lands **in the code is English** — comments, doc comments, log and error
-strings, identifiers, commit messages — whatever language we're talking in. Everything I say **to
+strings, identifiers, commit messages — whatever language we're talking in. Commit messages and
+PR/issue text follow the repo file instead when it sets a convention for them (a team that writes
+its history in its own language) — the project's convention wins there. Everything I say **to
 the developer is in the developer's language**, including the §10 receipt.
 
 ## 0. Classify + state the recipe (one line, out loud, before the first edit)
@@ -180,7 +182,10 @@ zero hits, or each survivor deferred with a stated reason.
 code generators and dependency code (`build.rs`, a `postinstall`, a proc-macro) run at compile
 time, with this user's rights — a build "just to see" is already the execution. When the session
 opens with `LEAK REVIEW PENDING` (the SessionStart hook, `leak-check.js status`), or the publish
-step finds commits by other authors on `origin/main` past the reviewed marker, I do not run the
+step finds commits by other authors on `origin/main` past the reviewed marker (`origin/main`
+throughout these rules means the watched branch: main, or the one the clone names with
+`git config leakcheck.branch <branch>` when the work is based on a branch that is not main —
+set it then, or the gates watch code that is never built), I do not run the
 build until: `node "{{CLAUDE_HOME}}\pipeline\leak-check.js" diff --out <scratch file>`
 (the project's declared secret surface, the foreign commits' code, the lockfile delta, moved fork
 pins with their diffs, and a signature pre-scan) → ONE background **`leak-review`** agent on that
