@@ -1,7 +1,7 @@
 {
   "name": "pipeline",
   "version": "0.1.0",
-  "description": "The working pipeline's live half: pins a by-hand gate-check to this session, shows the Stop hook's WARN lines and the session-start alarms above the prompt, delivers oversized SessionStart context whole, and attaches a §0 class hint to each prompt.",
+  "description": "The working pipeline's live half: pins a by-hand gate-check to this session, shows the Stop hook's WARN lines and the session-start alarms above the prompt, delivers oversized SessionStart context whole, attaches a §0 class hint to each prompt, and refuses a review agent with no diff or a second fix-diff in one task.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "classify": {

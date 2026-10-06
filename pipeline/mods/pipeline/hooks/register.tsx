@@ -12,6 +12,10 @@
  *     preview) into the first message's context, whole
  *   - prompt.submit: the small model's §0 class for a typed prompt, attached as
  *     a hint for the model and shown in the band
+ *   - agent.spawn: refuses a review agent whose prompt carries no diff (§6) and
+ *     a second fix-diff in one task (§9) before they start, where gate-check
+ *     could only report them after the turn; the band lists this task's
+ *     review agents
  *
  * Every hook fails open: a throw is skipped by the engine and the chain runs
  * as if the mod were absent, which for each of these is the old behaviour.
@@ -32,15 +36,25 @@ import {
   MOVE_MAX_CHARS,
   movedName,
   movedPointer,
+  opensTask,
   persistedPath,
   pinSession,
+  REVIEW_AGENTS,
   shouldClassify,
+  spawnDenial,
   warnLines,
 } from './logic'
 
-const EMPTY: PipelineBand = { alarms: [], warns: [], report: '', hint: '' }
+const EMPTY: PipelineBand = { alarms: [], warns: [], report: '', hint: '', agents: [] }
 const band = atom({ plugin: 'pipeline', key: 'band' } as const, EMPTY)
 const moved = atom({ plugin: 'pipeline', key: 'moved' } as const, [] as PipelineMovedContext[])
+
+// This task's fix-diff spawns and review agents live in the module, not in
+// $.state: a dispatch reads state as it stood when it began, so two fix-diff
+// spawns in one response would both read 0 and both start. A spawn takes its
+// slot before `next(e)` and gives it back only if the engine refused it.
+let fixDiffRuns = 0
+let taskAgents: string[] = []
 
 // The classifier must not hold a prompt up: past this the prompt goes in without a hint.
 const CLASSIFY_TIMEOUT_MS = 3_000
@@ -91,6 +105,8 @@ export const register: Register = (on, options) => {
       whole.push(saved === undefined ? entry : ((await $.fs.read(saved).catch(() => undefined)) ?? entry))
     }
     await update($, band, () => ({ ...EMPTY, alarms: alarmLines(whole) }))
+    fixDiffRuns = 0
+    taskAgents = []
     // Whatever an earlier conversation of this process carried is not this one's.
     await update($, moved, () => [])
     // A resumed or forked conversation already has its first message: nothing
@@ -136,6 +152,12 @@ export const register: Register = (on, options) => {
     if (e.origin.kind === 'composer' || e.origin.kind === 'bridge' || e.origin.kind === 'sdk') {
       await update($, band, b => ({ ...b, alarms: [], warns: [], report: '', hint: '' }))
     }
+    // A new task: its agents and its one fix-diff are counted afresh.
+    if (opensTask(e.text, e.origin.kind)) {
+      fixDiffRuns = 0
+      taskAgents = []
+      await update($, band, b => ({ ...b, agents: [] }))
+    }
     if (!wantClassify || !shouldClassify(e.text, e.origin.kind)) return next(e)
     const asked = $.model.classify(e.text.slice(0, CLASSIFY_MAX_CHARS), CLASS_LABELS).catch(() => undefined)
     const late = $.clock.sleep(CLASSIFY_TIMEOUT_MS).then(() => undefined)
@@ -146,10 +168,37 @@ export const register: Register = (on, options) => {
     return next({ ...e, context: [...(e.context ?? []), hintContext(label)] })
   })
 
+  on('agent.spawn', async ($, e, next) => {
+    const type = e.subagentType
+    if (!REVIEW_AGENTS.has(type)) return next(e)
+    const denied = spawnDenial(type, e.prompt, fixDiffRuns)
+    if (denied) {
+      taskAgents = [...taskAgents, `✖${type}`]
+      await update($, band, b => ({ ...b, agents: taskAgents }))
+      return { deny: denied }
+    }
+    if (type === 'fix-diff') fixDiffRuns += 1
+    // The slot goes back when the spawn did not happen: refused or failed.
+    const giveBack = () => {
+      if (type === 'fix-diff') fixDiffRuns -= 1
+    }
+    const r = await next(e).catch(err => {
+      giveBack()
+      throw err
+    })
+    if ('deny' in r) {
+      giveBack()
+      return r
+    }
+    taskAgents = [...taskAgents, type]
+    await update($, band, b => ({ ...b, agents: taskAgents }))
+    return r
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (!showBand || e.props.hasSurvey) return next(e)
     const b = await read($, band)
-    if (b.alarms.length === 0 && b.warns.length === 0 && !b.hint) return next(e)
+    if (b.alarms.length === 0 && b.warns.length === 0 && !b.hint && b.agents.length === 0) return next(e)
     const { Box, Text } = $.ui.resolve(e)
     const width = Math.max(20, e.props.bodyColumns)
     return (
@@ -167,6 +216,11 @@ export const register: Register = (on, options) => {
         {b.warns.length > 0 && (
           <Text key="report" dimColor>
             {fit(`  ${b.report}`, width)}
+          </Text>
+        )}
+        {b.agents.length > 0 && (
+          <Text key="agents" dimColor>
+            {fit(`§6/§9 agents: ${b.agents.join(' · ')}`, width)}
           </Text>
         )}
         {b.hint && (

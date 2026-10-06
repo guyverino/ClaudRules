@@ -38,10 +38,13 @@
     "pipeline/mods/moon-guard/.claude-plugin/plugin.json",
     "pipeline/mods/moon-guard/hooks/cargo.ts",
     "pipeline/mods/moon-guard/hooks/diag.ts",
+    "pipeline/mods/moon-guard/hooks/hold.ts",
     "pipeline/mods/moon-guard/hooks/hooks.json",
+    "pipeline/mods/moon-guard/hooks/preview.ts",
     "pipeline/mods/moon-guard/hooks/register.tsx",
     "pipeline/mods/moon-guard/tests/cargo.test.ts",
     "pipeline/mods/moon-guard/tests/diag.test.ts",
+    "pipeline/mods/moon-guard/tests/hold.test.ts",
     "pipeline/mods/moon-guard/tests/register.test.ts",
     "pipeline/mods/moon-guard/tsconfig.json",
     "pipeline/mods/moon-guard/types/index.d.ts",
@@ -74,6 +77,8 @@
     "pipeline/tests/screen.test.js",
     "pipeline/tests/stacks.test.js",
     "pipeline/tests/stats.test.js",
-    "pipeline/tests/testedtree.test.js"
+    "pipeline/tests/testedtree.test.js",
+    "project-skills/moon-terminal/publish/SKILL.md",
+    "project-skills/moon-terminal/tutorial-video/SKILL.md"
   ]
 }

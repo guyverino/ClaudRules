@@ -2,14 +2,17 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import {
   alarmLines,
+  carriesDiff,
   CLASS_LABELS,
   isOversized,
   keptWithGates,
   labelName,
   movedPointer,
+  opensTask,
   persistedPath,
   pinSession,
   shouldClassify,
+  spawnDenial,
   warnLines,
 } from '../hooks/logic'
 
@@ -90,5 +93,35 @@ describe('logic', () => {
 
   test('every class label has a name before its colon', async () => {
     expect(CLASS_LABELS.map(labelName)).toEqual(['trivial', 'small', 'rename', 'feature', 'refactor', 'bug', 'perf', 'research'])
+  })
+
+  test('a diff counts inline or as a file to Read, a mention of one does not', async () => {
+    expect(carriesDiff('Intent: x\n\ndiff --git a/src/x.rs b/src/x.rs\n--- a/src/x.rs\n+++ b/src/x.rs')).toBe(true)
+    expect(carriesDiff('changed lines:\n@@ -10,3 +10,4 @@ fn x()')).toBe(true)
+    expect(carriesDiff('The diff is saved at C:/tmp/review.diff, Read it.')).toBe(true)
+    expect(carriesDiff('see changes.patch')).toBe(true)
+    expect(carriesDiff('Review the diff of src/x.rs: I changed the timeout.')).toBe(false)
+    expect(carriesDiff('run git diff to see the change')).toBe(false)
+    expect(carriesDiff('no .diff saved yet, review from memory')).toBe(false)
+    expect(carriesDiff('no `.diff` yet (or a .patch)')).toBe(false)
+  })
+
+  test('a review agent without a diff and a second fix-diff are refused; other agents pass', async () => {
+    const diff = 'diff --git a/x b/x\n@@ -1 +1 @@'
+    expect(spawnDenial('flow', 'review src/x.rs', 0)).toContain('no diff')
+    expect(spawnDenial('flow', diff, 0)).toBeUndefined()
+    expect(spawnDenial('fix-diff', diff, 0)).toBeUndefined()
+    expect(spawnDenial('fix-diff', diff, 1)).toContain('once')
+    // a second run of an angle is not §9's business
+    expect(spawnDenial('half-fix', diff, 1)).toBeUndefined()
+    expect(spawnDenial('Explore', 'find the parser', 0)).toBeUndefined()
+    expect(spawnDenial('leak-review', 'read C:/tmp/leak.txt', 0)).toBeUndefined()
+  })
+
+  test('a task opens on a typed prompt, as gate-check reads it', async () => {
+    expect(opensTask('делай 1 и 2', 'composer')).toBe(true)
+    expect(opensTask('/diag', 'composer')).toBe(false)
+    expect(opensTask('<task-notification>done</task-notification>', 'task-notification')).toBe(false)
+    expect(opensTask('  ', 'composer')).toBe(false)
   })
 })

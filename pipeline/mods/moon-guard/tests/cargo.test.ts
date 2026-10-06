@@ -43,6 +43,9 @@ describe('cargo', () => {
     expect(cargoDenial('cd D:/x && git commit -m "docs: drop the vcvars cargo wrapper"')).toBeUndefined()
     expect(cargoDenial(`cmd /c "\\"C:\\Program Files\\VS\\vcvars64.bat\\" && cargo build ${T}"`)).toContain('vcvars')
     expect(cargoDenial('git commit -m "fix: cargo build now writes moonterminal.exe"')).toBeUndefined()
+    // a script body naming the PowerShell tool, the vcvars wrapper and cargo runs none of them
+    expect(cargoDenial("python - <<'EOF'\n# tool.call (Bash, PowerShell): refuses the vcvars wrapper around cargo\nEOF")).toBeUndefined()
+    expect(cargoDenial("$s = @'\npowershell then vcvars then cargo\n'@")).toBeUndefined()
   })
 
   test('--target-dir is not --target', async () => {

@@ -30,6 +30,16 @@ const WRAPPED_VCVARS_RE = /\b(?:cmd|powershell|pwsh)(?:\.exe)?\b[\s\S]*vcvars[\s
 const PROGRAM_RE = /^(?:[A-Za-z]:[\\/]|[\\/~.])[^\n]*\.(?:bat|cmd|exe)$/i
 
 /**
+ * The command with its heredoc bodies and PowerShell here-strings taken out:
+ * text written to a file or a program's stdin, never run by this shell.
+ */
+export function withoutDocs(command: string): string {
+  return command
+    .replace(/<<-?\s*(['"]?)(\w+)\1([^\n]*)\n[\s\S]*?\n[ \t]*\2[ \t]*(?=\n|$)/g, '<<$2$3')
+    .replace(/@(['"])\r?\n[\s\S]*?\r?\n\1@/g, '@@')
+}
+
+/**
  * The command with what is data rather than shell taken out: heredoc bodies,
  * PowerShell here-strings, and quoted spans holding whitespace (a commit
  * message, an echo). Line continuations (a trailing backtick or backslash)
@@ -39,9 +49,7 @@ const PROGRAM_RE = /^(?:[A-Za-z]:[\\/]|[\\/~.])[^\n]*\.(?:bat|cmd|exe)$/i
  */
 export function bare(command: string): string {
   return (
-    command
-      .replace(/<<-?\s*(['"]?)(\w+)\1([^\n]*)\n[\s\S]*?\n[ \t]*\2[ \t]*(?=\n|$)/g, '<<$2$3')
-      .replace(/@(['"])\r?\n[\s\S]*?\r?\n\1@/g, '@@')
+    withoutDocs(command)
       .replace(/[`\\]\r?\n/g, ' ')
       .replace(INNER_RE, '$1$2 ; $4 ;')
       // One pass, left to right, so quotes pair up in order: two passes (or one
@@ -69,7 +77,8 @@ export function segments(command: string): string[] {
 export function cargoDenial(command: string): string | undefined {
   const segs = segments(command)
   const vcvarsSeg = segs.some(s => /vcvars/i.test(s)) && segs.some(s => /(?:^|[\s"'\\/])cargo(?:\.exe)?["']?(?:\s|$)/.test(s))
-  if (vcvarsSeg || WRAPPED_VCVARS_RE.test(command)) {
+  // Raw but for heredocs: a script body that merely mentions PowerShell, vcvars and cargo runs none of them.
+  if (vcvarsSeg || WRAPPED_VCVARS_RE.test(withoutDocs(command))) {
     return `moon-guard: run cargo directly in the PowerShell tool — the MSVC linker is already on its PATH; the vcvars wrapper hangs or only echoes the cmd banner (CLAUDE.md, Build).`
   }
   for (const seg of segs) {

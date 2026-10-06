@@ -155,3 +155,57 @@ export function shouldClassify(text: string, originKind: string): boolean {
 export function hintContext(label: string): string {
   return `[pipeline mod] §0 hint: the small model reads this prompt, taken alone, as "${label}". A hint, not the class: the §0 small-test and the stated class line still decide.`
 }
+
+/**
+ * The §6/§9 agents that review a diff (~/.claude/agents/): read-only, no shell,
+ * so the diff has to travel in their prompt. leak-review is not one — it reads
+ * the report file leak-check.js wrote.
+ */
+export const REVIEW_AGENTS: ReadonlySet<string> = new Set([
+  'flow',
+  'half-fix',
+  'contracts',
+  'error-paths',
+  'seams',
+  'external-data',
+  'value-integrity',
+  'type-design',
+  'tests',
+  'fix-diff',
+  'verify-finding',
+])
+
+// A unified diff pasted into the prompt (a `diff --git` header or a hunk
+// header), or a saved one the agent can Read (a .diff/.patch file name — the
+// bare extension in prose, "no .diff yet" or "no `.diff`", names no file).
+const DIFF_RE = /^diff --git |^@@ -\d+(?:,\d+)? \+\d+|[\w-]\.(?:diff|patch)\b/m
+
+/** Whether a prompt hands its reader a diff, inline or as a file it can Read. */
+export const carriesDiff = (prompt: string) => DIFF_RE.test(prompt)
+
+/**
+ * Why a subagent must not start as asked, or undefined. Two rules of the
+ * pipeline that gate-check could only report after the turn:
+ *   - a review agent with no diff in its prompt reviews a guess: it has no
+ *     shell to run `git diff` itself (§6);
+ *   - fix-diff runs once per task (§9): a second run re-hunts its own fixes.
+ *
+ * `fixDiffRuns` is how many fix-diff spawns this task already let through.
+ */
+export function spawnDenial(type: string, prompt: string, fixDiffRuns: number): string | undefined {
+  if (!REVIEW_AGENTS.has(type)) return undefined
+  if (type === 'fix-diff' && fixDiffRuns > 0) {
+    return `pipeline mod: fix-diff already ran in this task — §9 runs it once. A confirmed high is fixed, built and read by you, never re-run. A new typed prompt starts a new task.`
+  }
+  if (!carriesDiff(prompt)) {
+    return `pipeline mod: ${type} has no shell, and its prompt carries no diff (no \`diff --git\` / \`@@\` hunk, no .diff/.patch file to Read). Paste the unified diff into the prompt, or save it to a .diff file and name the path (§6).`
+  }
+  return undefined
+}
+
+/** Whether a typed prompt opens a new task, by gate-check's rule (lib/transcript.js isTaskOpening). */
+export function opensTask(text: string, originKind: string): boolean {
+  if (originKind !== 'composer' && originKind !== 'bridge' && originKind !== 'sdk') return false
+  const t = text.trim()
+  return t !== '' && !t.startsWith('/')
+}

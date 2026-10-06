@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 
 const SID = '1772a474-d164-41dc-862b-203f1c6bbf6d'
 
@@ -30,4 +30,50 @@ describe('register', () => {
     expect(fresh.additionalContext?.[1]).toBe('short one')
     expect(resumed.additionalContext).toEqual([big, 'short one'])
   })
+
+  test('a review agent without a diff never starts, and fix-diff starts once per task', async ($, on) => {
+    const started: string[] = []
+    on('agent.spawn', ($, e) => {
+      started.push(e.subagentType ?? '')
+      return { model: 'sonnet' }
+    })
+    on('model.classify', () => ({ value: undefined }))
+    on('prompt.submit', ($, e) => ({ text: e.text }))
+    mock.clock(on)
+    const diff = 'diff --git a/src/x.rs b/src/x.rs\n@@ -1 +1 @@'
+    // The engine pins the rest of a spawn (tool_use_id, provider, parentModel...); the hook reads these two.
+    const spawn = (subagentType: string, prompt: string) => $.agent.spawn({ subagentType, prompt } as never)
+
+    const blind = await spawn('flow', 'review the timeout change in src/x.rs')
+    await spawn('flow', diff)
+    await spawn('fix-diff', diff)
+    const again = await spawn('fix-diff', diff)
+    await spawn('Explore', 'where is the parser')
+    await $.prompt.submit({ text: 'next task: fix the parser timeout please', origin: { kind: 'composer' } } as never)
+    await spawn('fix-diff', diff)
+
+    expect('deny' in blind && blind.deny).toContain('no diff')
+    expect('deny' in again && again.deny).toContain('once')
+    expect(started).toEqual(['flow', 'fix-diff', 'Explore', 'fix-diff'])
+  })
+
+  test('two fix-diff spawns in one response: exactly one starts', async ($, on) => {
+    const started: string[] = []
+    on('agent.spawn', ($, e) => {
+      started.push(e.subagentType ?? '')
+      return { model: 'sonnet' }
+    })
+    on('model.classify', () => ({ value: undefined }))
+    on('prompt.submit', ($, e) => ({ text: e.text }))
+    mock.clock(on)
+    const diff = 'diff --git a/src/x.rs b/src/x.rs\n@@ -1 +1 @@'
+    const spawn = (subagentType: string, prompt: string) => $.agent.spawn({ subagentType, prompt } as never)
+    await $.prompt.submit({ text: 'a fresh task that reviews its own fixes', origin: { kind: 'composer' } } as never)
+
+    const both = await Promise.all([spawn('fix-diff', diff), spawn('fix-diff', diff)])
+
+    expect(both.filter(r => 'deny' in r).length).toBe(1)
+    expect(started).toEqual(['fix-diff'])
+  })
 })
+

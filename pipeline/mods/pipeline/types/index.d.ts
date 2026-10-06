@@ -8,6 +8,8 @@ export type PipelineBand = {
   report: string
   /** The §0 class the small model read in the last typed prompt. */
   hint: string
+  /** The subagents this task started, by type, in order (agent.spawn); a refused one carries a ✖. */
+  agents: string[]
 }
 
 /** A SessionStart context entry too large for the hook channel, carried to the first message instead. */

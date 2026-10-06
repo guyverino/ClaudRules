@@ -1,6 +1,14 @@
 {
   "name": "moon-guard",
   "version": "0.1.0",
-  "description": "MoonTerminal's shell rules and live counters: refuses cargo builds without the MSVC target, the vcvars wrapper and a Cargo.lock committed under a [patch] path override; /diag shows render_diag.log as it is written.",
-  "types": "./types/index.d.ts"
+  "description": "MoonTerminal's shell rules and live counters: refuses cargo builds without the MSVC target, the vcvars wrapper and a Cargo.lock committed under a [patch] path override; holds a push, a PR merge, a release, a discard of uncommitted work and a lock update with a preview until the person confirms; /diag shows render_diag.log as it is written.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "hold": {
+      "type": "boolean",
+      "title": "Hold risky commands",
+      "description": "Hold git push, gh pr merge, releases, git reset --hard / checkout -- / restore / clean -f, and cargo update until you press Proceed (or type /proceed); unanswered in 2 minutes, the command is refused with its preview",
+      "default": true
+    }
+  }
 }
