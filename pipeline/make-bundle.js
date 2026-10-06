@@ -200,7 +200,7 @@ fi
 
 # --- acceptance BEFORE wiring anything up ----------------------------------------------------
 if [ "\$DRY" -eq 1 ]; then
-  say "would run the regression suite, then register the Stop, UserPromptSubmit, SessionStart and PreToolUse (no-poll) hooks"
+  say "would run the regression suite, then register the Stop, UserPromptSubmit, SessionStart and PreToolUse (no-poll, ask-lang) hooks"
   say "dry run: nothing was written"
   exit 0
 fi

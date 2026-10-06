@@ -8,31 +8,27 @@
 // followed it: a whole session came back in English on 2026-09-24. A line injected with each
 // prompt does not depend on that toss.
 //
+// AskUserQuestion is named outright: its fields are tool input, and tool input reads like the
+// code and PR text the same block keeps in English — on 2026-10-06 both questions of a session
+// went out in English while every prose message around them was Russian. ask-lang.js refuses
+// such a question before it reaches the developer; this line is the ask, that hook the guard.
+//
 // The language lives in reply-lang.local beside this script — this machine's preference, never
 // exported to the rules repo (export-rules.js copies scripts only). No file, or an empty one:
 // the hook prints nothing and the session behaves as before.
 
-const fs = require("fs");
-const path = require("path");
-const { pipelineDir } = require("./lib/root");
+const { replyLang } = require("./lib/lang");
 
-const FILE = path.join(pipelineDir("reply-lang"), "reply-lang.local");
-
-let lang = "";
-try {
-  // First non-empty line only, BOM stripped: a note under it must not leak into the prompt.
-  lang = (fs.readFileSync(FILE, "utf8").replace(/^﻿/, "").split(/\r?\n/).find((l) => l.trim()) || "").trim();
-} catch {
-  // no file: nothing to pin
-}
+const lang = replyLang("reply-lang");
 
 if (lang) {
   process.stdout.write(
     "<reply-language>\n" +
       "Every message to the developer is in " + lang + ": progress notes, questions, the §0 class\n" +
       "line and the §10 receipt included — even when the prompt is only a paste, and even when a\n" +
-      "template or example in the rules is spelled in English. Code, comments, log strings, commit\n" +
-      "messages, PR and issue text stay English, as CLAUDE.md says.\n" +
+      "template or example in the rules is spelled in English. AskUserQuestion is a message to the\n" +
+      "developer too: its question, header, option labels and descriptions are in " + lang + ".\n" +
+      "Code, comments, log strings, commit messages, PR and issue text stay English, as CLAUDE.md says.\n" +
       "</reply-language>\n"
   );
 }

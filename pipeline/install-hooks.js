@@ -5,6 +5,7 @@
 //   UserPromptSubmit -> reply-lang.js (pins the reply language from reply-lang.local; silent without it)
 //   SessionStart     -> leak-check.js status (one line when commits by others await a leak review)
 //   PreToolUse       -> no-poll.js on Bash|PowerShell (refuses a sleep loop or a 30 s+ wait, §7)
+//   PreToolUse       -> ask-lang.js on AskUserQuestion (refuses an English question; silent without reply-lang.local)
 //   env.CLAUDE_CODE_PLUGIN_DIRS -> every mod folder under pipeline/mods/
 // Run again after editing: it replaces its own entries and leaves every other hook untouched.
 
@@ -23,10 +24,11 @@ const SCRIPT = path.join(ROOT, ".claude", "pipeline", "gate-check.js");
 const LEAK = path.join(ROOT, ".claude", "pipeline", "leak-check.js");
 const NO_POLL = path.join(ROOT, ".claude", "pipeline", "no-poll.js");
 const REPLY_LANG = path.join(ROOT, ".claude", "pipeline", "reply-lang.js");
+const ASK_LANG = path.join(ROOT, ".claude", "pipeline", "ask-lang.js");
 // Match our own scripts by folder + filename in either separator style. A bare filename would
 // also claim an unrelated third-party hook that happens to be named gate-check.js; a marker with
 // one fixed separator would match neither, and every run would append a duplicate.
-const MARKS = ["gate-check.js", "leak-check.js", "no-poll.js", "reply-lang.js"].flatMap((f) => ["pipeline\\" + f, "pipeline/" + f]);
+const MARKS = ["gate-check.js", "leak-check.js", "no-poll.js", "reply-lang.js", "ask-lang.js"].flatMap((f) => ["pipeline\\" + f, "pipeline/" + f]);
 const isOurs = (c) => typeof c === "string" && MARKS.some((m) => c.includes(m));
 // Which of our scripts a command runs, separator-neutral; "" for anything not ours.
 const scriptOf = (c) => {
@@ -44,6 +46,7 @@ const cmd = (mode) => '"' + NODE + '" "' + SCRIPT + '" ' + mode + prefixArg;
 const leakCmd = '"' + NODE + '" "' + LEAK + '" status';
 const noPollCmd = '"' + NODE + '" "' + NO_POLL + '"';
 const replyLangCmd = '"' + NODE + '" "' + REPLY_LANG + '"' + prefixArg;
+const askLangCmd = '"' + NODE + '" "' + ASK_LANG + '"' + prefixArg;
 
 if (!fs.existsSync(SETTINGS)) {
   console.error("no settings.json at " + SETTINGS + " - nothing to install into");
@@ -133,6 +136,9 @@ install("SessionStart", "status", 15, leakCmd);
 // A shell command that polls with sleep is refused before it runs (§7): the checker's WARN comes
 // a task too late to save the turn that waited. Only the two shell tools; a Read never sleeps.
 install("PreToolUse", "", 10, noPollCmd, "Bash|PowerShell");
+// A question to the developer in English when the reply language is not: reply-lang.js asks for
+// the language on every prompt, and the questions ignored the ask twice in one session.
+install("PreToolUse", "", 5, askLangCmd, "AskUserQuestion");
 
 // The mods under pipeline/mods/<name>/ (a folder with .claude-plugin/plugin.json) load from
 // CLAUDE_CODE_PLUGIN_DIRS in settings.json's env block, the one place Claude Code reads it from
