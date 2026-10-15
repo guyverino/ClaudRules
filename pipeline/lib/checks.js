@@ -448,6 +448,48 @@ function gateClassBounds(c) {
   }
 }
 
+// §0.5: understand the request — ask through AskUserQuestion, or say in one line how it was read.
+// Three shapes, all read from the record, none from the receipt's claim:
+//  - numbered questions in the text the turn ended on: the answer ("1-да 2-да") opens a new task
+//    window with no class line and no receipt — 39 such turns over 10–15.10;
+//  - more than two windows: one, plus one when the picture changed; a confirmation before an
+//    outward action is declared on the receipt (`understanding … N/A: confirmation, …`);
+//  - work that owed the stage and shows neither a question nor a `Понял так:` line: a declared
+//    feature or refactor, or a long task that wrote nothing in the project (research, a plan).
+// The research threshold is a step count because a task with no edits owes no class line, so no
+// name is there to read. Measured over 10–15.10 (336 task windows): tasks with no edits take
+// 2 / 6 / 13 tool calls at p50 / p75 / p95, so 15 marks the top ~5% — the real research.
+const RESEARCH_STEPS = 15;
+function gateUnderstanding(c) {
+  const d = c.d;
+  const asks = (d.asks || []).length;
+  if ((d.proseQuestions || 0) >= 2 && !c.isTrivial) {
+    c.lines.push("WARN  s0.5 - the turn ended on " + d.proseQuestions + " numbered questions in prose: the answer opens a new task window with no class line; ask through AskUserQuestion");
+  }
+  // The whole receipt line, not skipDeclared: that one stops at the first `·`, and the line lists
+  // the windows before it names the confirmation.
+  const confirmation = c.said.split("\n").some((l) => /(understanding|понимание)/i.test(l) && /N\/A\s*:\s*(confirmation|подтвержд)/i.test(l) && !/<[^>]*>/.test(l));
+  if (asks - (confirmation ? 1 : 0) > 2) {
+    // By hand the digest is taken BEFORE the final message, so the receipt that declares the
+    // confirmation window cannot be there yet — the same allowance gateReceipt makes.
+    const byHand = Boolean(d.meta && d.meta.invokedBy === "hand") && !c.receipt;
+    c.lines.push((byHand ? "note  " : "WARN  ") + "s0.5 - " + asks + " AskUserQuestion windows in one task: one, plus one when the picture changed; a confirmation before an outward action is declared on the receipt");
+  }
+  if (asks || d.understood || c.isTrivial) return;
+  const feature = /(feature|фич|refactor|рефактор)/i.test(c.cls);
+  // Research is work that wrote NOTHING — not "nothing in this project": a task editing the
+  // harness or another repo from this cwd has no project writes and is not research. A declared
+  // bug or perf task is an investigation the class table already governs.
+  // Narrower than SCRATCH_RE, which counts the harness's own folder as scratch: here an edit to
+  // the harness is real work.
+  const wroteSomething = d.writes.some((w) => w.unknown || !/(?:^|[\\/])(?:scratchpad|temp|tmp)[\\/]/i.test(String(w.file || "")));
+  const investigation = /(bug|баг|regression|регресс|perf)/i.test(c.cls);
+  const research = !wroteSomething && !investigation && (d.steps || 0) >= RESEARCH_STEPS;
+  if (feature || research) {
+    c.lines.push("WARN  s0.5 - " + (feature ? "a feature" : "a " + d.steps + "-step task with no edits (research?)") + " with no question asked and no `Понял так:` line: say how the request was read, or ask");
+  }
+}
+
 // Time lost to waiting by hand, reported beside the gates: 41% of one measured session went here.
 // Thresholds match §7's wording — one wait over 30 s is already the smell, and so is a sleep
 // inside a loop, whose real cost the text always understates.
@@ -511,6 +553,7 @@ function check(d, cwd) {
   gateBlindBuild(c);
   gateVerifyFinding(c);
   gateClassBounds(c);
+  gateUnderstanding(c);
   gateSleep(c);
   gateSmall(c);
 

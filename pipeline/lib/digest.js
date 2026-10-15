@@ -477,6 +477,8 @@ function buildDigest(records) {
     writes: [],
     slashCommands: [],
     order: [],
+    asks: [],
+    lastText: "",
   };
   let fullText = "";
   let step = 0;
@@ -525,9 +527,16 @@ function buildDigest(records) {
     }
     if (rec.type !== "assistant" || !rec.message || !Array.isArray(rec.message.content)) continue;
     const t = textOf(rec.message.content);
-    if (t) fullText += t + "\n";
+    if (t) {
+      fullText += t + "\n";
+      // The text the turn ended on is the one whose questions the developer answers in a NEW
+      // prompt — the shape §0.5 replaces with AskUserQuestion.
+      d.lastText = t;
+    }
     for (const b of rec.message.content) {
       if (!b || b.type !== "tool_use") continue;
+      // A call after the text means the turn went on: that text is not what it ended on.
+      d.lastText = "";
       // A tool call whose result came back is_error did not happen: a nonexistent agent type, an
       // Edit whose string did not match. Shell is the exception - a command that exited non-zero
       // still ran, and dropping it would erase build attempts and writes made before the failure.
@@ -603,6 +612,12 @@ function buildDigest(records) {
         collectScriptWrites(full, step, d.writes, scripts);
         collectBatchWrites(full, step, d.writes, specs);
         countSleep(d, bare);
+      } else if (b.name === "AskUserQuestion") {
+        // §0.5: one understanding window, at most a second. A call refused by a hook (ask-lang)
+        // came back is_error and was skipped above — the developer never saw it.
+        const qs = Array.isArray(inp.questions) ? inp.questions : [];
+        d.asks.push({ step, questions: qs.length, multi: qs.filter((q) => q && q.multiSelect).length });
+        d.order.push(step + ":ask");
       } else if (b.name === "Skill") {
         d.skills.push({ step, skill: inp.skill || "", args: inp.args || "" });
         d.order.push(step + ":skill(" + (inp.skill || "") + ")");
@@ -624,7 +639,27 @@ function buildDigest(records) {
   // Either language: the receipt itself is written in the developer language.
   d.hasReceipt = /(Class \+ recipe|Класс \+ рецепт)\s*:/i.test(fullText);
   d.assistantText = fullText.slice(-20000);
+  d.understood = understoodDeclared(fullText);
+  d.steps = step; // every tool call that ran: how much work a task with no edits still was
+  d.proseQuestions = proseQuestions(d.lastText);
   return d;
+}
+
+// §0.5's alternative to a question: one line saying how the request was read. Either language; a
+// quoted template line (`Понял так: <the reading …>`) is not a statement.
+function understoodDeclared(text) {
+  return text.split("\n").some((line) => /(?:Понял так|Understood as)\s*:\s*\S/i.test(line) && !/<[^>]*>/.test(line));
+}
+
+// Numbered questions in prose: list items ("1.", "2)", "**3.**") carrying a question mark. Two or
+// more in the text a turn ended on is the shape that sends the answer into a new task window; one
+// is a rhetorical line or a single yes/no, which a prompt answers just as well.
+// A `?` inside a code span (Rust's operator, a URL query, a regex) is not a question.
+function proseQuestions(text) {
+  return String(text || "")
+    .split("\n")
+    .map((line) => line.replace(/`[^`]*`/g, ""))
+    .filter((line) => /^\s*[*_]*\d{1,2}[.)][*_]*\s[^\n]*\?/.test(line)).length;
 }
 
 function classDeclared(text) {
@@ -650,4 +685,4 @@ function classDeclared(text) {
   return arrow ? arrow[0].trim() : "";
 }
 
-module.exports = { buildDigest, classDeclared, collectWrites, scriptTargets, bareOf, withoutHeredocs, loopBodies, sleepShape };
+module.exports = { buildDigest, classDeclared, understoodDeclared, proseQuestions, collectWrites, scriptTargets, bareOf, withoutHeredocs, loopBodies, sleepShape };

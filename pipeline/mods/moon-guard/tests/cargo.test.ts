@@ -9,7 +9,7 @@ describe('cargo', () => {
     expect(cargoDenial('cargo build -p moon-ui-gpui --bin moonterminal')).toContain('--target x86_64-pc-windows-msvc')
     expect(cargoDenial('cargo test --workspace')).toBeDefined()
     expect(cargoDenial('cargo clippy -p moon-core -- -D warnings')).toBeDefined()
-    expect(cargoDenial('& "C:\\Users\\Guyver\\.cargo\\bin\\cargo.exe" build -p moon-core')).toBeDefined()
+    expect(cargoDenial('& "C:\\Users\\dev\\.cargo\\bin\\cargo.exe" build -p moon-core')).toBeDefined()
     expect(cargoDenial('cargo +nightly test -p moon-core')).toBeDefined()
     // one segment of a chain without it is enough
     expect(cargoDenial(`cargo build ${T}; cargo test -p moon-core`)).toBeDefined()
@@ -17,7 +17,7 @@ describe('cargo', () => {
 
   test('the documented commands pass', async () => {
     expect(cargoDenial(`cargo build -p moon-ui-gpui --bin moonterminal ${T}`)).toBeUndefined()
-    expect(cargoDenial(`node "{{CLAUDE_HOME}}/pipeline/tested-tree.js" run -- cargo test --workspace ${T}`)).toBeUndefined()
+    expect(cargoDenial(`node "C:/Users/dev/.claude/pipeline/tested-tree.js" run -- cargo test --workspace ${T}`)).toBeUndefined()
     expect(cargoDenial(`cargo test -p moon-ui-gpui ${T} --profile inspector --features ui-inspector`)).toBeUndefined()
     expect(cargoDenial('cargo zigbuild -p moon-station --target x86_64-unknown-linux-musl')).toBeUndefined()
     expect(cargoDenial('cargo check -p moon-core')).toBeUndefined()

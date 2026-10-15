@@ -434,6 +434,12 @@ function buildRow(records, digest, meta, checkResult) {
     sleepSeconds: Math.round(digest.sleepSeconds || 0),
     sleepCalls: digest.sleepCalls || 0,
     sleepLoop: Boolean(digest.sleepLoop),
+    // §0.5, so the stage can be judged on the record later: how often it asked, through which
+    // channel, and whether a task that did not ask said how it read the request.
+    asks: (digest.asks || []).length,
+    askQuestions: (digest.asks || []).reduce((n, a) => n + (a.questions || 0), 0),
+    proseQuestions: digest.proseQuestions || 0,
+    understood: Boolean(digest.understood),
     agents,
     findings,
   };

@@ -102,6 +102,49 @@ gate wearing a disguise.
 The line I state now is line 1 of the §10 receipt. Not having a plan is not a reason to ask
 permission; it's a reason to write one.
 
+## 0.5 Understand the request (ask once, or say how I read it)
+
+A wrong guess about *what* is wanted costs the whole task; a question costs one click. Before the
+work, I check the request against one test: **is there a fork the developer would decide
+differently than I would, whose answer is not in the code, the memory or this conversation, and
+where a wrong pick means redoing the work or an action I cannot take back?** Yes → I ask. No → I
+decide, and say how in one line: `Понял так: <the reading I am acting on>` (`Understood as:` for
+an English-speaking developer) — cheap to correct, and it is what §10 checks. A task that edits
+nothing (research, a question, a plan) owes no §0 class line; its first text is the question or
+that line.
+
+When, by the kind of task — the measure behind it: what the answer would change.
+
+| task | ask | when |
+|---|---|---|
+| trivial | never | — |
+| small · bug | only a real fork (a bug: what *should* happen, when the repro cannot tell) | after §1's read |
+| feature · refactor | one window if there is a fork | after a short §1 read, before the first edit — the options then name real things |
+| research · open question · plan | almost always: scope, depth, the form of the answer | **at the start**, before gathering — the scope decides what gets read |
+| "interview me" (asked for) | rounds until covered, then the spec in a file | from the start |
+
+How:
+- **Through `AskUserQuestion`, never as numbered questions in prose.** A prose question ends the
+  turn, and the answer ("1-да 2-да") opens a *new* task window — no class line, no receipt, no
+  review: measured over 10–15.10, 39 prose-question turns against 33 tool calls, and the
+  follow-ups are where §0 went missing. The tool's answer lands inside the same task.
+- Plain words — what the developer will see or get, not my internal names. 1–4 questions per
+  call, 2–4 options each, my pick **first** and marked `(рекомендую)`. "What to include" is a
+  `multiSelect` (checkboxes); mutually exclusive choices are single-select.
+- Never ask what I can read, measure or decide by a convention, and never a question whose every
+  answer leads to the same work.
+
+After the answers, **I decide alone** and write each decision into §10 (`решил сам: …`). One
+**second round** is allowed, only when what I found changed the picture — the premise turned out
+false, or a fork appeared that the first round could not see — and it says what changed. No third.
+A confirmation before an irreversible outward action (a deploy, a push, a merge — the rules that
+already demand one) is not an understanding round and is not counted against it.
+
+🚩 **Gate:** a research task, a feature or a refactor with no question asked and no `Понял так:`
+line is a skipped stage — the checker warns on it (research = 15+ tool calls that wrote nothing),
+on two or more numbered prose questions the turn ended on, and on more than two windows; a confirmation window is declared on the §10 `0.5 understanding:` line as
+`N/A: confirmation, <what>`, which the count reads.
+
 ## 1. Ground truth (before writing anything)
 
 Read the actual source (including vendored/forked deps, not from memory), the logs, or add a
@@ -436,6 +479,7 @@ it reveals a stage I skipped on autopilot, I go run that stage instead of writin
 
 ```
 Class + recipe: <what I stated at §0>
+0.5 understanding: <asked n question(s) in k window(s): what was chosen · решил сам: … | Понял так: … | N/A: trivial> <a confirmation window before an outward action: "N/A: confirmation, <what>">
 1 ground truth:  <file:line I read / the number I measured | N/A> · parallel: <none (n commits · m PRs read) | overlap: <sha/#PR> — stopped | N/A: no other contributors>
 2 runtime model: <changed X -> observed by Y -> re-renders Z | N/A>
 4 decommission:  <superseded symbols grepped, 0 hits | deferred: sym — reason | N/A>
