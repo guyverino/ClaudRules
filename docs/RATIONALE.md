@@ -84,7 +84,7 @@ the run that measured it.
 ## R9 — misses are only countable where the answer is known (2026-10-23)
 
 The ledger scores what an angle caught and what was acted on; it cannot see what a review let
-through, and `stats.js` said so in its own footer. Two additions, both from reading other teams'
+through, and `stats.js` said so in its own footer. Three additions, all from reading other teams'
 agent setups next to this one:
 
 - **Known false alarms.** 260 distinct `refuted:` lines from past receipts, grouped by the shape of
