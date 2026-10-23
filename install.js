@@ -16,8 +16,9 @@
 //      as the Linux bundle does from its own manifest, so a renamed module disappears on both paths
 //   4. run pipeline/test.js — red suite → roll the install back (restore the backup, or remove
 //      what was written on a first install) and exit 1; hooks are never registered over it
-//   5. run pipeline/install-hooks.js (Stop / UserPromptSubmit / SessionStart, idempotent; a
-//      minimal settings.json is created when none exists) — a refusal is reported and rolls back too
+//   5. run pipeline/install-hooks.js (Stop / UserPromptSubmit / SessionStart / PreToolUse,
+//      idempotent; a minimal settings.json is created when none exists) — a refusal is reported and
+//      rolls back too
 //   6. install project skills into each --project's .claude/skills/, recording which ones came
 //      from here in .claude/skills/.claudrules.json so a later install can prune ONLY those
 //   7. record where this checkout is (pipeline/rules-repo.local) so export-rules.js needs no path

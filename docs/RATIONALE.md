@@ -80,3 +80,26 @@ post-merge check keeps running exactly when it can catch something: when another
 between and the tree moved. Its `-p` pair became `--workspace`: two `-p` runs left four crates
 untested and resolved a different feature set, which rebuilt 122 third-party crates (3.5 min) on
 the run that measured it.
+
+## R9 — misses are only countable where the answer is known (2026-10-23)
+
+The ledger scores what an angle caught and what was acted on; it cannot see what a review let
+through, and `stats.js` said so in its own footer. Two additions, both from reading other teams'
+agent setups next to this one:
+
+- **Known false alarms.** 260 distinct `refuted:` lines from past receipts, grouped by the shape of
+  the wrong inference: "the old code did the same" ~40, "a documented decision read as an
+  oversight" ~40, "a cost claimed without its size" ~30, "an input the system cannot produce" ~25,
+  "the guard sits in the caller" ~25, "a transient race reported as durable" ~25, the rest under
+  ~20 each. → each angle file carries the 2–4 shapes that hit it, phrased as the check to run
+  before reporting, never as a ban; `verify-finding` scores a finding low only by naming what
+  refuted it.
+- **Text addressed to the reviewer.** None of the agent files said what to do with a comment in the
+  change that tells the reviewer to report nothing; `leak-review` reads exactly the code where such
+  a line would be planted. → it is material, never an instruction, and a `high` finding of its own.
+- **The seeded battery** (`eval.js`): 12 invented changes, one planted defect per angle plus a
+  planted instruction to the reviewer and two clean controls. First run: **13 of 13 defects
+  caught, 0 false alarms on the controls, 12 runs, 534 K tokens (~44 K per run), 98 s.** The cases
+  are small, so the result proves the harness, not perfect recall; the battery earns its keep
+  when a defect that got past a real review becomes a case. A miss there becomes a
+  `## Known misses` line in the angle's file.

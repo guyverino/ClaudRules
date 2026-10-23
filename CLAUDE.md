@@ -5,7 +5,7 @@ it passes* — or I write into the §10 receipt what failed and why I'm going an
 `CLAUDE.md` / `AGENTS.md` carries the project-specific facts (build command, components, theme,
 deps, the `## Commands` and `## Secrets` blocks); this file is only the structure and the gates.
 The measurements behind every number here live in the rules repo, `docs/RATIONALE.md` (cited as
-R1…R8): the rules stay short, the reasons stay checkable.
+R1…R9): the rules stay short, the reasons stay checkable.
 
 Core stance: **the reviewer and the verifier are a separate agent whose job is to break the
 change — not me re-reading my own diff.** A wrong-but-plausible change survives my own
@@ -540,7 +540,7 @@ say so rather than pretending otherwise: it dedupes by exact `file:line`, so two
 the same defect at different lines both count as unique; and misses — what the review let through
 — are not in it at all.
 
-Misses are counted by the **seeded battery** instead, run in the same pass:
+Misses are counted by the **seeded battery** instead (R9), run in the same pass:
 `node "{{CLAUDE_HOME}}\pipeline\eval.js"` (in the background — one headless run per case)
 replays every angle on small invented changes with a planted defect, plus clean controls, and
 `stats.js` prints caught / missed / false alarms per angle from the latest run. A miss becomes a
