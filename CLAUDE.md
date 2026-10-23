@@ -540,6 +540,15 @@ say so rather than pretending otherwise: it dedupes by exact `file:line`, so two
 the same defect at different lines both count as unique; and misses — what the review let through
 — are not in it at all.
 
+Misses are counted by the **seeded battery** instead, run in the same pass:
+`node "{{CLAUDE_HOME}}\pipeline\eval.js"` (in the background — one headless run per case)
+replays every angle on small invented changes with a planted defect, plus clean controls, and
+`stats.js` prints caught / missed / false alarms per angle from the latest run. A miss becomes a
+`## Known misses` line in that angle's file, then a re-run of its case; a defect that got past a
+real review and surfaced later becomes a new case in `pipeline/lib/eval-cases.js`, invented names
+only. Each angle file also carries `## Known false alarms` — the shapes past findings were refuted
+on — so a refutation I wrote once is not paid for again; a new recurring one goes there.
+
 The Stop hook stays as the part I cannot skip: if a task opens with a `<pipeline-gate-check>`
 block, that is the previous task's report resurfacing — read it and say plainly whether a gate was
 really skipped before starting the new work.

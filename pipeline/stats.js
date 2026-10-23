@@ -249,16 +249,75 @@ function render(rows, out) {
   say("re-run with --since after a rewrite so the old history stops dragging the average.");
   say("Two things this table cannot see: it dedupes by exact file:line, so two angles describing");
   say("one defect at different lines both count as unique; and misses — what the review let");
-  say("through — are not in it at all.");
+  say("through — are not in it at all. The seeded battery below is where misses are counted.");
   return out;
 }
 
-module.exports = { aggregate, measureFor, dedupe, render, readRows, parserSuspect, SEVERITY_WEIGHT, MIN_RUNS, MIN_JUDGED };
+// The battery (eval.js): the latest row per case, per angle — caught of seeded defects, false
+// alarms on clean controls. Older rows stay in the file as history; a case re-run replaces its
+// row here, so an angle file rewritten after a miss is judged on its new answer.
+function renderEval(rows, out) {
+  const say = (s) => out.push(s);
+  // Only the cases the battery holds today: a renamed or retired case must not keep counting.
+  const known = new Set(require("./lib/eval-cases").CASES.map((c) => c.id));
+  // The newest answered run per case; when that answer broke the contract the case is unscored,
+  // not judged on an older answer the newer one replaced.
+  const latest = new Map();
+  for (const r of rows) if (r && known.has(r.case) && !r.error) latest.set(r.case, r);
+  const malformed = [...latest.values()].filter((r) => r.malformed).map((r) => r.case);
+  for (const id of malformed) latest.delete(id);
+  say("");
+  if (malformed.length) say("unscored (answer outside the contract): " + malformed.join(", "));
+  if (!latest.size) {
+    say(malformed.length
+      ? "seeded battery: no scored case — every newest answer above broke the contract; re-run them."
+      : "seeded battery: no run recorded yet — `node eval.js` runs it (one agent run per case).");
+    return out;
+  }
+  const byAngle = new Map();
+  for (const r of latest.values()) {
+    const a = byAngle.get(r.angle) || { cases: 0, caught: 0, expected: 0, clean: 0, falseAlarms: 0, missed: [], last: "" };
+    a.cases += 1;
+    if (r.clean) {
+      a.clean += 1;
+      a.falseAlarms += r.falseAlarms || 0;
+    } else {
+      a.caught += r.caught || 0;
+      a.expected += r.expected || 0;
+      for (const d of r.defects || []) if (!d.caught) a.missed.push(r.case + ":" + d.id);
+    }
+    if (String(r.ts) > a.last) a.last = String(r.ts);
+    byAngle.set(r.angle, a);
+  }
+  say("seeded battery (latest run per case):");
+  say("angle".padEnd(16) + "cases".padStart(6) + "caught".padStart(8) + "clean".padStart(6) + "false".padStart(6) + "  last run");
+  say("-".repeat(60));
+  for (const [angle, a] of [...byAngle.entries()].sort()) {
+    say(
+      angle.padEnd(16) + String(a.cases).padStart(6) + (a.caught + "/" + a.expected).padStart(8) +
+        String(a.clean).padStart(6) + String(a.falseAlarms).padStart(6) + "  " + a.last.slice(0, 10)
+    );
+  }
+  const missed = [...byAngle.entries()].filter(([, a]) => a.missed.length);
+  if (missed.length) {
+    say("");
+    say("missed — each one is a `## Known misses` line for that angle's file, then a re-run:");
+    for (const [angle, a] of missed) say("  " + angle.padEnd(16) + "— " + a.missed.join(", "));
+  }
+  return out;
+}
+
+module.exports = { aggregate, measureFor, dedupe, render, renderEval, readRows, parserSuspect, SEVERITY_WEIGHT, MIN_RUNS, MIN_JUDGED };
 
 if (require.main === module) {
+  // The battery does not depend on the ledger: it is printed whatever the ledger holds or the
+  // filters leave of it.
+  const evalFile = path.join(path.dirname(LEDGER), "eval-results.jsonl");
+  const battery = () => renderEval(fs.existsSync(evalFile) ? readRows(evalFile) : [], []).join("\n");
   if (!fs.existsSync(LEDGER)) {
     console.log("no ledger yet: " + LEDGER);
     console.log("It fills up on its own — one line per task, written by the Stop hook.");
+    console.log(battery());
     process.exit(0);
   }
   const args = process.argv.slice(2);
@@ -272,7 +331,8 @@ if (require.main === module) {
   if (lastAt !== -1) rows = rows.slice(-(Number(args[lastAt + 1]) || 0));
   if (!rows.length) {
     console.log("no tasks match");
+    console.log(battery());
     process.exit(0);
   }
-  console.log(render(rows, []).join("\n"));
+  console.log(render(rows, []).join("\n") + "\n" + battery());
 }

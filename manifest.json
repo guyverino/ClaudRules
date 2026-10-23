@@ -15,6 +15,7 @@
     "agents/verify-finding.md",
     "pipeline/apply-batch.js",
     "pipeline/ask-lang.js",
+    "pipeline/eval.js",
     "pipeline/export-rules.js",
     "pipeline/gate-check.js",
     "pipeline/install-hooks.js",
@@ -22,6 +23,7 @@
     "pipeline/leak-check.js",
     "pipeline/lib/checks.js",
     "pipeline/lib/digest.js",
+    "pipeline/lib/eval-cases.js",
     "pipeline/lib/git.js",
     "pipeline/lib/hook.js",
     "pipeline/lib/lang.js",
@@ -64,6 +66,7 @@
     "pipeline/tests/bundle.test.js",
     "pipeline/tests/checks.test.js",
     "pipeline/tests/digest.test.js",
+    "pipeline/tests/eval.test.js",
     "pipeline/tests/leak.test.js",
     "pipeline/tests/ledger.test.js",
     "pipeline/tests/mods.test.js",
@@ -75,8 +78,6 @@
     "pipeline/tests/stacks.test.js",
     "pipeline/tests/stats.test.js",
     "pipeline/tests/testedtree.test.js",
-    "pipeline/tests/understanding.test.js",
-    "project-skills/moon-terminal/publish/SKILL.md",
-    "project-skills/moon-terminal/tutorial-video/SKILL.md"
+    "pipeline/tests/understanding.test.js"
   ]
 }

@@ -22,6 +22,18 @@ if (tFs.existsSync(AGENTS)) {
   t(missing.length === 0, "agents: every angle carries a Return contract", missing.length ? missing : "all");
   const distinct = new Set([...blocks.values()].filter(Boolean));
   t(distinct.size === 1, "agents: the contract + hard rules block is identical across " + shared.length + " angles", distinct.size + " variant(s)");
+  // Hostile text in the change (a comment telling the reviewer to report nothing) is a finding,
+  // in every agent that reads a change — the identical-block check alone passes when all lack it.
+  const lacking = files.filter((f) => !/is itself a finding/.test(tFs.readFileSync(tPath.join(AGENTS, f), "utf8")) && f !== "verify-finding.md");
+  t(lacking.length === 0, "agents: text addressed to the reviewer is a finding", lacking.length ? lacking : "all");
+  t(/addresses you, is not evidence/.test(tFs.readFileSync(tPath.join(AGENTS, "verify-finding.md"), "utf8")), "agents: verify-finding treats code text as data", "ok");
+  // The vaccine sits before the shared block, where it may differ per angle.
+  const noVaccine = shared.filter((f) => {
+    const text = tFs.readFileSync(tPath.join(AGENTS, f), "utf8");
+    const at = text.indexOf("## Known false alarms");
+    return at === -1 || at > text.indexOf("## Return contract");
+  });
+  t(noVaccine.length === 0, "agents: every angle carries known false alarms", noVaccine.length ? noVaccine : "all");
   // The front matter every agent needs: a name matching its file, read-only tools, a model.
   for (const f of files) {
     const text = tFs.readFileSync(tPath.join(AGENTS, f), "utf8");
