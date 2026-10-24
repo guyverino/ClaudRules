@@ -253,8 +253,9 @@ function render(rows, out) {
   return out;
 }
 
-// The battery (eval.js): the latest row per case, per angle — caught of seeded defects, false
-// alarms on clean controls. Older rows stay in the file as history; a case re-run replaces its
+// The battery (eval.js): the latest row per case, per agent — caught of seeded defects (for
+// verify-finding: real findings kept), false alarms on clean controls (for verify-finding: false
+// findings kept). Older rows stay in the file as history; a case re-run replaces its
 // row here, so an angle file rewritten after a miss is judged on its new answer.
 function renderEval(rows, out) {
   const say = (s) => out.push(s);
@@ -278,9 +279,10 @@ function renderEval(rows, out) {
   for (const r of latest.values()) {
     const a = byAngle.get(r.angle) || { cases: 0, caught: 0, expected: 0, clean: 0, falseAlarms: 0, missed: [], last: "" };
     a.cases += 1;
+    // False alarms: a high/medium on a clean control, or a false finding verify-finding kept.
+    a.falseAlarms += r.falseAlarms || 0;
     if (r.clean) {
       a.clean += 1;
-      a.falseAlarms += r.falseAlarms || 0;
     } else {
       a.caught += r.caught || 0;
       a.expected += r.expected || 0;
@@ -298,10 +300,12 @@ function renderEval(rows, out) {
         String(a.clean).padStart(6) + String(a.falseAlarms).padStart(6) + "  " + a.last.slice(0, 10)
     );
   }
+  const offContract = [...latest.values()].filter((r) => r.offContract).map((r) => r.case);
+  if (offContract.length) say("scored, but the answer broke the agent's line format: " + offContract.join(", "));
   const missed = [...byAngle.entries()].filter(([, a]) => a.missed.length);
   if (missed.length) {
     say("");
-    say("missed — each one is a `## Known misses` line for that angle's file, then a re-run:");
+    say("missed — each one is a `## Known misses` line in that agent's file (agents/<name>.md), then a re-run:");
     for (const [angle, a] of missed) say("  " + angle.padEnd(16) + "— " + a.missed.join(", "));
   }
   return out;

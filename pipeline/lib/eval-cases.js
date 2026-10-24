@@ -671,4 +671,60 @@ const CASES = [
   },
 ];
 
+// verify-finding cases: a numbered batch of findings on one of the changes above, some real and
+// some false, scored the way §6 uses the filter — under 60 is dropped. A real finding dropped is
+// the filter's miss; a false one kept is its false alarm. The real ones are built on purpose in
+// the shapes its own "usually fail" list names (a line outside the diff, an input that looks
+// impossible, a deliberate rename), because over-applying that list is the failure to catch.
+//   findings: { id, file, text, claim, severity, real } — the line is the one holding `text`.
+const VERIFY = [
+  {
+    id: "vf-lock",
+    base: "error-paths-lock",
+    findings: [
+      { id: "race-on-acquire", real: false, file: "store.js", text: "  await lock.acquire();", severity: "high", claim: "race: two saveAll calls can both read locked === false in acquire() and enter together" },
+      { id: "release-skipped", real: true, file: "store.js", text: "  lock.release();", severity: "high", claim: "a rejected write() skips lock.release(): every later saveAll waits forever on acquire()" },
+      { id: "handoff-unlocks", real: false, file: "store.js", text: "    if (next) next();", severity: "medium", claim: "release() hands the lock to the next waiter but leaves locked false, so a third caller enters beside it" },
+    ],
+  },
+  {
+    id: "vf-units",
+    base: "half-fix-units",
+    findings: [
+      { id: "stale-reader-outside-diff", real: true, file: "health.js", text: "cfg.timeoutSec * 1000", severity: "high", claim: "health.js still reads cfg.timeoutSec, which loadConfig no longer sets: the health deadline becomes NaN" },
+      { id: "client-in-seconds", real: false, file: "client.js", text: "timeoutMs: cfg.timeoutMs", severity: "high", claim: "requestOptions now passes the timeout in seconds: every request times out 1000 times too early" },
+    ],
+  },
+  {
+    id: "vf-average",
+    base: "flow-empty-average",
+    findings: [
+      { id: "quadratic-total", real: false, file: "stats.js", text: "for (const o of orders) sum += o.size;", severity: "medium", claim: "totalSize is O(n^2): it walks every order inside a walk over the orders" },
+      { id: "empty-start-nan", real: true, file: "stats.js", text: "return totalSize(orders) / orders.length;", severity: "high", claim: "averageSize divides by orders.length; the summary drawn at start has no orders yet, so it renders NaN" },
+      { id: "panel-shows-nan", real: true, file: "panel.js", text: "avg.toFixed(2)", severity: "medium", claim: "the first render prints 'Average: NaN', before any order exists" },
+    ],
+  },
+  {
+    id: "vf-reminder",
+    base: "value-units",
+    findings: [
+      { id: "round-loses-second", real: false, file: "reminder.js", text: "Math.round(REMIND_AFTER_MS / 1000)", severity: "low", claim: "Math.round drops the fraction: the 90 000 ms delay is reported as 89 s" },
+      { id: "seconds-as-ms", real: true, file: "reminder.js", text: "timers.setTimeout(() => order.remind(), delaySec);", severity: "high", claim: "setTimeout now receives delaySec (90): the reminder fires after 90 ms instead of 90 s" },
+    ],
+  },
+  {
+    id: "vf-settings",
+    base: "seams-persisted",
+    findings: [
+      { id: "old-file-theme", real: true, file: "settings.js", text: "return { theme: data.colorTheme, fontSize: data.fontSize };", severity: "high", claim: "a settings file written by the previous version holds theme, not colorTheme: after the upgrade the theme loads as undefined" },
+      { id: "missing-file-throws", real: false, file: "settings.js", text: "if (!fs.existsSync(file))", severity: "high", claim: "loadSettings throws when settings.json does not exist yet" },
+    ],
+  },
+];
+
+for (const v of VERIFY) {
+  const base = CASES.find((c) => c.id === v.base);
+  CASES.push({ id: v.id, angle: "verify-finding", kind: "verify", intent: base.intent, files: base.files, defects: [], findings: v.findings });
+}
+
 module.exports = { CASES };

@@ -103,3 +103,12 @@ agent setups next to this one:
   are small, so the result proves the harness, not perfect recall; the battery earns its keep
   when a defect that got past a real review becomes a case. A miss there becomes a
   `## Known misses` line in the angle's file.
+- **The filter, measured too** (2026-10-24). The first day under the new definitions, real
+  sessions saw `verify-finding` drop **71 % of findings under 60** (4 batches) against 52 % over the
+  156 batches before, mean score 54 → 43 — the shape list could be pushing it to score low. Five
+  batteries of known findings on the seeded changes (12 findings: 6 real, built in the very shapes
+  the list names — a line outside the diff, an input that looks impossible, a deliberate rename —
+  and 6 false) answered that: **6 of 6 real kept (92–95), 6 of 6 false dropped (5–45)**. The
+  rise in real sessions is not the filter throwing real findings away on these shapes. What the
+  run did show: **2 of 5 answers broke the line format** (reasoning printed first, `score` left
+  out) — on two runs, the same two cases. The battery scores them and flags `offContract`.

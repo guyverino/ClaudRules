@@ -543,7 +543,9 @@ the same defect at different lines both count as unique; and misses — what the
 Misses are counted by the **seeded battery** instead (R9), run in the same pass:
 `node "{{CLAUDE_HOME}}\pipeline\eval.js"` (in the background — one headless run per case)
 replays every angle on small invented changes with a planted defect, plus clean controls, and
-`stats.js` prints caught / missed / false alarms per angle from the latest run. A miss becomes a
+`verify-finding` on batches of known real and false findings (a real one scored under 60 is the
+filter's miss, a false one kept its false alarm); `stats.js` prints caught / missed / false
+alarms per agent from the latest run. A miss becomes a
 `## Known misses` line in that angle's file, then a re-run of its case; a defect that got past a
 real review and surfaced later becomes a new case in `pipeline/lib/eval-cases.js`, invented names
 only. Each angle file also carries `## Known false alarms` — the shapes past findings were refuted

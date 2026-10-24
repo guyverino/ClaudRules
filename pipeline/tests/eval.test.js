@@ -19,7 +19,14 @@ for (const c of CASES) {
     }).map((s) => s.file + ": " + s.text)
   );
   t(bad.length === 0, "eval: sites found once in " + c.id, bad.length ? bad : "ok");
-  t(c.clean ? c.defects.length === 0 : c.defects.length > 0, "eval: defects match clean flag " + c.id, c.defects.length);
+  if (c.kind === "verify") {
+    // Both kinds must be present, or the case cannot tell a strict filter from a lax one.
+    const lost = c.findings.filter((f) => typeof (c.files[f.file] || {}).after !== "string" || c.files[f.file].after.split(f.text).length !== 2);
+    t(lost.length === 0, "eval: verify anchors found once in " + c.id, lost.length ? lost.map((f) => f.id) : "ok");
+    t(c.findings.some((f) => f.real) && c.findings.some((f) => !f.real), "eval: verify case mixes real and false " + c.id, c.findings.length);
+  } else {
+    t(c.clean ? c.defects.length === 0 : c.defects.length > 0, "eval: defects match clean flag " + c.id, c.defects.length);
+  }
   if (tFs.existsSync(AGENTS)) t(tFs.existsSync(tPath.join(AGENTS, c.angle + ".md")), "eval: angle has an agent " + c.id, c.angle);
 }
 
@@ -49,6 +56,29 @@ s = ev.score(clean, "0 findings");
 t(s.zero && !s.malformed && s.falseAlarms === 0, "eval: 0 findings on a clean control holds", JSON.stringify(s));
 s = ev.score(clean, "Looks fine to me overall.");
 t(s.malformed, "eval: prose with no finding line is malformed", s.malformed);
+
+// --- verify-finding scoring -------------------------------------------------------------------
+const vf = byId("vf-lock"); // #1 false, #2 real, #3 false
+s = ev.score(vf, "#1 · score 20 · acquire sets locked synchronously\n#2 · score 85 · release is skipped on a throw\n#3 · score 30 · locked stays true on handoff");
+t(s.caught === 1 && s.expected === 1 && s.falseAlarms === 0 && !s.malformed, "eval: verify keeps the real, drops the false", JSON.stringify(s));
+s = ev.score(vf, "#1 · score 70 · plausible\n#2 · score 40 · guarded\n#3 · score 10 · no");
+t(s.caught === 0 && s.defects[0].score === 40 && s.falseAlarms === 1, "eval: a real one dropped is a miss, a false one kept a false alarm", JSON.stringify(s));
+s = ev.score(vf, "#1 · score 10 · x\n#3 · score 10 · y");
+t(s.caught === 0 && s.unscored.join() === "release-skipped" && !s.malformed, "eval: an unscored real finding is a miss and is listed", JSON.stringify(s.unscored));
+t(!s.offContract, "eval: the contract form is not flagged", s.offContract);
+s = ev.score(vf, "Let me check.\n```\n#1 · 20 · sync\n#2 · 95 · skipped\n#3 · 10 · no\n```");
+t(s.caught === 1 && s.falseAlarms === 0 && s.offContract && !s.malformed, "eval: a bare score with prose around still scores, flagged off-contract", JSON.stringify(s));
+s = ev.score(vf, "All three look fine.");
+t(s.malformed, "eval: a verify answer with no score line is malformed", s.malformed);
+s = ev.score(vf, "#2 · score " + ev.DROP_BELOW + " · at the line");
+t(s.caught === 1, "eval: a score at the drop line is kept", s.caught);
+const vtree = ev.buildCase(vf);
+try {
+  const vp = ev.prompt(vf, vtree);
+  t(/#2 store\.js:\d+ — a rejected write/.test(vp) && !/real/i.test(vp.split("Findings:")[1]), "eval: the verify prompt numbers the findings and hides which are real", "ok");
+} finally {
+  vtree.remove();
+}
 
 // --- the case tree ----------------------------------------------------------------------------
 const tree = ev.buildCase(byId("half-fix-units"));
@@ -89,6 +119,8 @@ t(/seams\s+— seams-persisted:d/.test(out) && !/flow\s+— flow-empty-average:d
 t(!/flow-injection/.test(out) && !/ENOENT/.test(out), "eval: a failed run is not scored", "ok");
 t(!/retired-case/.test(out), "eval: a case no longer in the battery is not counted", "ok");
 t(/unscored[^\n]*clean-half-fix/.test(out) && !/^half-fix/m.test(out), "eval: a malformed answer is unscored, never a clean pass", "ok");
+const vout = stats.renderEval([evRow({ case: "vf-lock", angle: "verify-finding", caught: 0, expected: 1, falseAlarms: 1, defects: [{ id: "release-skipped", caught: false }] })], []).join("\n");
+t(/verify-finding\s+1\s+0\/1\s+0\s+1/.test(vout) && /vf-lock:release-skipped/.test(vout), "eval: verify rows count kept-false as false alarms and list dropped real ones", vout.split("\n").find((l) => l.startsWith("verify")));
 
 // --- the binary -------------------------------------------------------------------------------
 const savedBin = process.env.CLAUDE_BIN;

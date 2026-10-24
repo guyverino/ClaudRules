@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Runs the review angles against the seeded-defect battery (lib/eval-cases.js) and records what
-// each one caught, missed and raised on a clean change. The ledger can only see findings that
-// were acted on; this is the one place a MISS is counted, because only here is the answer known.
+// each one caught, missed and raised on a clean change — and verify-finding against batches of
+// known real and false findings: a real one it scores under 60 is a miss of the filter. The
+// ledger can only see findings that were acted on; this is the one place a MISS is counted,
+// because only here is the answer known.
 //
 //   node eval.js                    every case (one headless agent run each — this costs tokens)
 //   node eval.js --angle flow       the cases of one angle
@@ -38,9 +40,48 @@ function siteLine(c, site) {
   return idx + 1;
 }
 
+// The drop line §6 applies to verify-finding scores: under it, a finding is thrown away.
+const DROP_BELOW = 60;
+
+// Pure: a verify-finding answer on a verify case. A real finding scored under the drop line was
+// thrown away — the filter's miss; a false one at or above it got through — its false alarm. A
+// finding the answer gives no score for is listed in `unscored` (and is a miss when it is real);
+// an answer with no score line at all is malformed. The judgement and the format are kept apart:
+// `#2 · 95 · …` (the word `score` dropped) or reasoning printed around the lines still scores,
+// and is recorded as `offContract` — the agent's own contract is one line per finding, nothing else.
+function scoreVerify(c, answer) {
+  const text = String(answer || "");
+  const scores = new Map();
+  for (const m of text.matchAll(/^\s*#(\d+)\s*[·|-]?\s*(?:score\s*)?(\d{1,3})\b/gim)) {
+    if (!scores.has(Number(m[1]))) scores.set(Number(m[1]), Number(m[2]));
+  }
+  const offContract = text.split("\n").some((l) => l.trim() && !/^#\d+ · score \d{1,3} · /.test(l.trim()));
+  const defects = [];
+  const unscored = [];
+  let falseAlarms = 0;
+  c.findings.forEach((f, i) => {
+    const s = scores.get(i + 1);
+    if (s === undefined) unscored.push(f.id);
+    if (f.real) defects.push({ id: f.id, caught: s !== undefined && s >= DROP_BELOW, score: s === undefined ? null : s });
+    else if (s !== undefined && s >= DROP_BELOW) falseAlarms += 1;
+  });
+  return {
+    defects,
+    caught: defects.filter((d) => d.caught).length,
+    expected: defects.length,
+    extras: 0,
+    falseAlarms,
+    unscored,
+    offContract: scores.size > 0 && offContract,
+    zero: false,
+    malformed: scores.size === 0,
+  };
+}
+
 // Pure: what one answer scored on one case. A finding matches a site by file basename (agents cite
 // relative, absolute or ./-prefixed paths) and a line within the site's tolerance.
 function score(c, answer) {
+  if (c.kind === "verify") return scoreVerify(c, answer);
   const parsed = parseAgentResult(String(answer || ""));
   const base = (f) => path.basename(String(f).replace(/\\/g, "/"));
   const used = new Set();
@@ -111,7 +152,31 @@ function buildIn(root, c) {
   return { root, repo, diff, changed, settings, remove: () => fs.rmSync(root, { recursive: true, force: true }) };
 }
 
+// The prompt §6 hands verify-finding: the numbered findings, the changed files, the diff — never
+// which of them are real.
+function verifyPrompt(c, tree) {
+  return [
+    "Findings from a code review of one change, to score.",
+    "",
+    "Changed files:",
+    ...tree.changed.map((f) => "- " + f),
+    "",
+    "Intent: " + c.intent,
+    "",
+    "The repository at the change's state is your working directory.",
+    "",
+    "Diff:",
+    "```diff",
+    tree.diff.trimEnd(),
+    "```",
+    "",
+    "Findings:",
+    ...c.findings.map((f, i) => "#" + (i + 1) + " " + f.file + ":" + siteLine(c, f) + " — " + f.claim + " — " + f.severity),
+  ].join("\n");
+}
+
 function prompt(c, tree) {
+  if (c.kind === "verify") return verifyPrompt(c, tree);
   return [
     "Changed files:",
     ...tree.changed.map((f) => "- " + f),
@@ -202,7 +267,12 @@ function main() {
     process.exit(2);
   }
   if (args.includes("--list")) {
-    for (const c of picked) console.log(c.id.padEnd(22) + c.angle.padEnd(16) + (c.clean ? "clean" : c.defects.length + " defect(s)"));
+    for (const c of picked) {
+      const what = c.kind === "verify"
+        ? c.findings.length + " finding(s), " + c.findings.filter((f) => f.real).length + " real"
+        : c.clean ? "clean" : c.defects.length + " defect(s)";
+      console.log(c.id.padEnd(22) + c.angle.padEnd(16) + what);
+    }
     return;
   }
   const dry = args.includes("--dry");
@@ -245,12 +315,17 @@ function main() {
         Object.assign(row, s, { ms: run.ms, tokens: run.tokens, answer: run.text.slice(0, 4000) });
         // An answer outside the contract is neither a miss nor a clean pass: stats.js leaves it
         // unscored and lists it, so a polluted run cannot pose as a result either way.
+        const missed = s.defects.filter((d) => !d.caught).map((d) => d.id).join(", ");
         const verdict = s.malformed
           ? "MALFORMED — unscored"
           : c.clean
           ? s.falseAlarms ? s.falseAlarms + " FALSE ALARM(S)" : "clean held"
-          : s.caught + "/" + s.expected + " caught" + (s.caught < s.expected ? " — MISSED " + s.defects.filter((d) => !d.caught).map((d) => d.id).join(", ") : "");
-        console.log(c.id.padEnd(22) + c.angle.padEnd(16) + verdict + " · extras " + s.extras + " · " + Math.round(run.ms / 1000) + "s");
+          : c.kind === "verify"
+          ? s.caught + "/" + s.expected + " real kept" + (missed ? " — DROPPED " + missed : "") +
+            (s.falseAlarms ? " · " + s.falseAlarms + " FALSE KEPT" : "") + (s.unscored.length ? " · unscored " + s.unscored.join(", ") : "") +
+            (s.offContract ? " · off-contract" : "")
+          : s.caught + "/" + s.expected + " caught" + (missed ? " — MISSED " + missed : "");
+        console.log(c.id.padEnd(22) + c.angle.padEnd(16) + verdict + (c.kind === "verify" ? "" : " · extras " + s.extras) + " · " + Math.round(run.ms / 1000) + "s");
       }
       fs.appendFileSync(RESULTS, JSON.stringify(row) + "\n", "utf8");
     } finally {
@@ -261,6 +336,6 @@ function main() {
   process.exit(failed ? 1 : 0);
 }
 
-module.exports = { score, siteLine, buildCase, prompt, resolveBin, RESULTS };
+module.exports = { score, scoreVerify, siteLine, buildCase, prompt, resolveBin, DROP_BELOW, RESULTS };
 
 if (require.main === module) main();
