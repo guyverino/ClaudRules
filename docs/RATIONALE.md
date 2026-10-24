@@ -112,3 +112,11 @@ agent setups next to this one:
   rise in real sessions is not the filter throwing real findings away on these shapes. What the
   run did show: **2 of 5 answers broke the line format** (reasoning printed first, `score` left
   out) — on two runs, the same two cases. The battery scores them and flags `offContract`.
+- **The format, fixed and re-measured** (2026-10-24). Before: **8 of 12** battery answers off
+  the line format. A stricter Return contract alone (first character `#`, `score` spelled out, an
+  example line): **5 of 10** — the model still wrote its analysis into the reply. The same rule
+  moved up into the agent's opening paragraph as well ("work silently; the reply is only the
+  score lines"): **0 of 10**. The judgement did not move: real findings mean 92 → 90 (min 72),
+  false ones mean 13 → 14 (max 45 → 20), all real kept and all false dropped in every run,
+  ~41 K → ~43 K tokens per run. Where a format rule sits matters as much as its wording: at the
+  end of the file it was read as a footnote.

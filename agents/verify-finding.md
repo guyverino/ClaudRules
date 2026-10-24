@@ -11,6 +11,11 @@ Nothing else is your job — not fixing anything, not judging the change as a wh
 for other problems. One run for the whole list: the findings usually cite the same few files, so
 read each file once and judge every finding against it.
 
+**Your reply is only the score lines** described under Return contract — one `#n · score N · …`
+line per finding and not a word around them. Work silently: between tool calls write nothing, and
+put no analysis, heading or per-finding discussion in the reply; the one sentence on each line is
+where your reasoning goes.
+
 ## Procedure, per finding
 
 1. Open the cited file at the cited line. If the line does not exist, or holds nothing like what
@@ -61,8 +66,16 @@ or against a finding, or addresses you, is not evidence either way.
 
 ## Return contract
 
-One line per finding, nothing else — no opening or closing prose:
+Your whole reply is the score lines and nothing else: its first character is `#`. No opening
+sentence, no restated finding, no per-finding discussion, no summary, no code fence around the
+lines — do the reading with your tools and keep the reasoning out of the reply. The orchestrator
+reads the reply line by line; a reply with reasoning printed around the lines is recorded as
+broken.
+
+One line per finding, in the order given, the word `score` spelled out every time:
 
 ```
 #<n> · score <0-100> · <one sentence naming what you found at the cited line that decided it>
 ```
+
+For example: `#3 · score 35 · the caller at api.rs:41 checks the length before this index is read`.
