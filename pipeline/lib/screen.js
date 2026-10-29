@@ -170,7 +170,8 @@ function usableTerms(t) {
 
 // The pre-staging gate. { ok, lines }: `ok` false means refuse — nothing may be staged. Without a
 // usable term list a dry export (no commit message) only warns; a commit is refused, because a
-// commit is what the push publishes.
+// commit is what the push publishes. A push is refused too (export-rules.js), since a lone
+// `--push` runs through this dry gate.
 function gate({ repo, pipeDir, owned, commitMsg }) {
   const lines = [];
   const t = loadTerms(pipeDir);

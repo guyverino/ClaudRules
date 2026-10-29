@@ -190,8 +190,9 @@ if (!screened.ok) {
   process.exit(1);
 }
 
+const git = (a) => execFileSync("git", a, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+
 if (commitMsg) {
-  const git = (a) => execFileSync("git", a, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
   // Only what this script owns: an unrelated pending edit in the checkout must not ride the commit.
   // Paths that do not exist yet (no LICENSE, no docs/) are fine for `add -A -- <path>` only when
   // they exist; filter, or git refuses the whole command.
@@ -209,23 +210,42 @@ if (commitMsg) {
     git(["commit", "-q", "--only", "-m", commitMsg, "--"].concat(owned));
     console.log("committed: " + git(["log", "-1", "--format=%h %s"]).trim());
   }
-  // A push sends every commit the upstream lacks, not only this run's — and runs even when nothing
-  // new changed, so commits a refused push left behind (fixed since) still go out. Screen them all
-  // first; no upstream at all is pushGate's refusal too.
-  if (push) {
-    let pending = null;
-    try {
-      pending = screenLib.unpushed(repo).length;
-    } catch {
-      pending = null; // no upstream: pushGate says so and refuses
+}
+
+// A push sends every commit the upstream lacks, not only this run's — and runs with or without
+// --commit, even when nothing new changed, so commits a refused push left behind (fixed since)
+// still go out. It once sat inside the --commit branch, where `--push` alone exited 0 having
+// pushed nothing. Screen every pending commit first; no upstream at all is pushGate's refusal too.
+if (push) {
+  if (!commitMsg) {
+    // Without --commit the fresh export is only copied into the checkout: say so, or a "pushed"
+    // below reads as if the rules just exported went out.
+    const owned = OWNED.filter((rel) => fs.existsSync(path.join(repo, rel)));
+    const changed = git(["diff", "--name-only", "-I", "Generated [0-9TZ:.-]+ by make-bundle|generatedAt", "--"].concat(owned))
+      .split("\n")
+      .concat(git(["ls-files", "--others", "--exclude-standard", "--"].concat(owned)).split("\n"))
+      .filter(Boolean);
+    if (changed.length) {
+      console.error("WARNING: this export changed " + changed.length + " file(s) that no commit carries — --push sends only commits already made; run with --commit \"…\" to publish them");
     }
-    if (pending === 0) console.log("nothing to push");
-    else {
-      const pg = screenLib.pushGate({ repo, terms: screened.terms });
-      for (const l of pg.lines) (pg.ok ? console.log : console.error)(l);
-      if (!pg.ok) process.exit(1);
-      git(["push", "-q"]);
-      console.log("pushed");
-    }
+  }
+  let pending = null;
+  try {
+    pending = screenLib.unpushed(repo).length;
+  } catch {
+    pending = null; // no upstream: pushGate says so and refuses
+  }
+  if (pending === 0) console.log("nothing to push");
+  else if (pending !== null && !screened.terms) {
+    // A dry export passes without a term list (it only warns); a push must not, or `--push` alone
+    // would send commits nothing screened.
+    console.error("REFUSED: no usable private-terms list — the pending commit(s) cannot be screened, not pushed (rules §11)");
+    process.exit(1);
+  } else {
+    const pg = screenLib.pushGate({ repo, terms: screened.terms });
+    for (const l of pg.lines) (pg.ok ? console.log : console.error)(l);
+    if (!pg.ok) process.exit(1);
+    git(["push", "-q"]);
+    console.log("pushed");
   }
 }
