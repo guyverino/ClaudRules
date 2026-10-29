@@ -213,6 +213,15 @@ The five that bite silently (the shapes are generic; the project file names its 
 - Never edit from a remembered copy: if a build or a formatter ran since I read the file, re-read
   the region before editing it.
 
+🚩 **Gate (no edit under a running build):** a build reads each crate's sources only when it
+reaches that crate, so an edit made while a build of the same tree runs — a backgrounded one
+above all — lands in some crates and not in others, and the artifact matches no tree at all.
+While a build of a tree is running I do not edit that tree; a fix found meanwhile (a review
+finding, a typo) waits for the build to report, or I stop the build first (`TaskStop`), then
+edit, then build again. An artifact I hand over, deploy or measure is built *after* the last
+edit to its tree; if an edit did land during a build, that build is thrown away and rerun, and I
+say so — never "it may contain the fix".
+
 🚩 **Gate (decommission):** when this change supersedes something — migration, replaced impl,
 removed feature — the orphaned old code sits OUTSIDE my diff, where every §6 agent is structurally
 blind to it. Replacing a fn deletes the old one; moving code removes it from the source; renaming
