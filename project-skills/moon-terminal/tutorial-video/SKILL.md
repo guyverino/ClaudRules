@@ -26,7 +26,7 @@ Tools on this machine: Python 3.11 with `playwright` (Chromium installed), `nump
 ## Fast path — from the atlas (try it FIRST)
 
 The site `D:\projects\MoonterminalWeb` (its server rebuilds it on every push) is built from a UI atlas: `src/data/atlas/main.json` lists
-every captured screen with its shot (`public/atlas/main/<id>.<lang>.png`, test cores, no private
+every captured screen with its shot (`public/atlas/main/<id>.<lang>.webp`, test cores, no private
 data), the screen it was opened from (`opened_from`), and every control on it with its exact
 rectangle, title and description in ru/en/es. The click path to any control is the
 `opened_from` chain — nothing to search, nothing to measure. Do not read `main.json` by hand;
