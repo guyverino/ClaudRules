@@ -17,7 +17,8 @@ Do not rewrite the engine per clip. If a clip needs something it cannot do, exte
 - `engine/scene.html` — the scene. Every style is a pure function of time in `seek(t)`; the
   timeline is compiled from the story at load.
 - `engine/render.py <job> marks|proof|render` — coordinates check, proof sheet, final mp4.
-- `engine/atlas.py find|make` — the fast path: story straight from the site's UI atlas.
+- `engine/atlas.py find|make|faq` — the fast path: story straight from the site's UI atlas, or from a
+  FAQ entry on top of it.
 - `engine/logo.svg` — the MoonTerminal logo of the intro card (`assets/brand/moonterminal-logo-blue-dark.svg`).
 
 Tools on this machine: Python 3.11 with `playwright` (Chromium installed), `numpy`, `Pillow`,
@@ -48,12 +49,41 @@ rectangle, title and description in ru/en/es. The click path to any control is t
    the clip shows: if its text differs from the atlas title (the atlas lags the code), put the
    shot's wording in the caption and the end card and name the difference in the hand-over — the
    developer decides whether the atlas needs a new capture. Settings take effect after «Сохранить»
-   (bottom of the Settings window, not in the atlas): say it in the end card's `sub`, do not measure
-   the button.
+   (bottom of the Settings window; `make` stops at the target): say it in the end card's `sub`, do
+   not measure the button.
 4. `render.py <job> render` (foreground, ≈15 s), then steps 8–9 of the workflow below.
 
 Know the limits and say them: the atlas shots show the TEST configuration (a checkbox may be off,
 a field may read 0), and a control the atlas never captured is not there — then screenshots.
+
+## From a FAQ entry
+
+The site's FAQ (`src/data/faq/<lang>.json`) already holds a checked path for each question. When the
+question is one of its entries, skip `find`:
+
+```
+python <skill>/engine/atlas.py faq <entry-id> <job> [--faq <file>]
+```
+
+Steps 3–4 above then apply. The difference from `make`: the question, the captions and the end card
+come from the entry, in its labels, and every step is played, the ones after the target too
+(«Сохранить»). The entry's `video` field says what to expect:
+
+- `atlas` — every step has a frame.
+- `mixed` — a step with no control in the atlas (a right click on a chart, a wizard page) is only a
+  caption over the whole current shot, with no highlight. `faq` prints each one; **read those frames on
+  the proof sheet**, and if most of the clip's captions describe what the shot does not show, take
+  that clip by the screenshots path.
+- `manual`, `none` — no step in the atlas: `faq` refuses with a non-zero exit and creates nothing.
+  Screenshots, or no clip.
+
+A clip that plays every step runs longer than the 12–20 s above: 23 s for 5 steps, 33 s for 7.
+The end card's `sub` is the target control's description: on an entry that lists several controls
+as equals, drop it from `story.json`, since it speaks of the first one only.
+
+A note that does not fit the caption band is left out and printed. The atlas must be the one the
+entry was checked against, or a newer one with the same ids: a control that has moved stops `faq`
+with the entry and the control named.
 
 ## Inputs (screenshots path)
 
