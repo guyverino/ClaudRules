@@ -1,6 +1,6 @@
 ---
 name: publish
-description: Publish a local change to Moonbot-Tech/MoonTerminal as a Pull Request and land it on main. Creates/uses a topic branch, rebases onto origin/main and resolves conflicts locally, runs the local gates (cargo fmt --check, build --all-targets, clippy -D warnings, cargo test, FireTest when a runtime surface is touched), reconciles the open GitHub issues (Closes / Refs, rewrite or split the partly-done ones after merge), pushes and opens a PR, then waits for CI to pass before squash-merging. Trigger on "выложи правку" / "publish my change" / "open a PR" / "/publish".
+description: Publish a local change to Moonbot-Tech/MoonTerminal as a Pull Request and land it on main. Creates/uses a topic branch, rebases onto origin/main and resolves conflicts locally, runs the local gates (cargo fmt --check, build --all-targets, clippy -D warnings, cargo test, FireTest when a runtime surface is touched), reconciles the open GitHub issues (Closes / Refs, rewrite or split the partly-done ones after merge), pushes and opens a PR, then waits for CI to pass before squash-merging; asks once about reshooting the site's atlas and does it after the merge. Trigger on "выложи правку" / "publish my change" / "open a PR" / "/publish".
 ---
 
 # Publish a change as a Pull Request
@@ -69,6 +69,46 @@ re-gate.
     report, do not publish. Same area, different fix → say so in the PR body and reference it.
     Nothing overlapping → one line in the report: `parallel: none (n commits · m PRs read)`.
     The rule: global CLAUDE.md §1.
+
+## B2. The site's atlas — ask now, shoot after the merge
+
+The pictures on the site go out with the change, not a session later. The question sits here, before
+the long gates, so the developer answers once and is not called back at the end. The answer blocks
+nothing: the gates go on, and step 15c acts on it. No `private/tools/scenes-release.ps1` on this
+machine → this stage does not apply.
+
+6c. What is owed — from the last reshoot, not from this PR alone, so commits by others and a reshoot
+    declined earlier are in the range:
+    ```bash
+    synced=$(sed -n 's/^scenes-synced:[[:space:]]*//p' docs-internal/faq/STATUS.md)
+    [ -n "$synced" ] || echo "no scenes-synced line: an empty range would read as nothing owed"
+    python private/harvest/cli.py affected "$synced..HEAD" --out "<scratch>/atlas-screens.json"
+    shot=$(sed -n 's/^scenes-moonui:[[:space:]]*//p' docs-internal/faq/STATUS.md)
+    latest=$(git ls-remote https://github.com/Moonbot-Tech/MoonUI master | cut -f1)
+    gh api "repos/Moonbot-Tech/MoonUI/compare/$shot...$latest" --jq '.commits[].commit.message | split("\n")[0]'
+    ```
+    Read the header line (`N files, M of them UI sources, K locale keys`), the screens, and MoonUI's
+    commits. Those come from master, not from `Cargo.lock`: the pin is never moved on purpose, and
+    the script shoots on master whatever the lock says. An empty `synced` or `shot` is a stop: ask,
+    do not read it as nothing owed.
+    - **M = 0, K = 0, no MoonUI commit that shows** → nothing visible changed (an inspector or a
+      collections commit does not show). No question; the report says `atlas: nothing to reshoot`,
+      and step 15c only moves the two lines.
+    - **A MoonUI commit that shows, or the diff adds a window, or changes the theme** → `affected`
+      cannot see this whatever it printed: #1254 was a MoonUI bump alone, redrew every table header,
+      and returned 0 screens. A change that shows on a few screens gets a list by hand; a change
+      visible everywhere, or a new window, is the full run, and only the developer's answer starts
+      one.
+    - **Otherwise** → read the diff too: the list holds the screens of known controls, and a change
+      can show elsewhere, so 0 screens does not mean unchanged (#1253, 13 locale keys in the report's
+      columns, returned 0). Add what it misses to the same file, with the parents of any screen
+      added by hand, or it gets no door; route labels are in the last run's `report.md`. Only a diff
+      that truly shows nowhere (a fixture, a test) ends as `atlas: nothing to reshoot`.
+
+6d. Ask with `AskUserQuestion`, naming the screens in plain words: reshoot with this publish
+    (recommended) or in a separate session; plus the full run (about 10 minutes, in the background)
+    when the list cannot be written. Declined → both lines stay where they are, the SessionStart
+    hook keeps printing the commits, and the next publish's range picks them up.
 
 ## C. Local gates — run AFTER the rebase (Windows MSVC target)
 
@@ -293,9 +333,45 @@ Say in one line what is about to go out before every push and `gh pr merge` belo
     --json state`); for each `Refs #n`, post the comment and rewrite the issue to its remainder
     (or create the follow-up and close the old one) as decided there. Do this AFTER the merge —
     an issue rewritten before the PR lands describes a state that does not exist yet.
+15c. The atlas, as answered in 6d — on the updated `main`, after step 14. Say in one line that the
+    change is on `main`. If `main` moved after 6c, repeat 6c's commands: what landed since is on no
+    list yet, and it goes into the same file. Note `git rev-parse HEAD` and MoonUI's master now: that
+    is what this run shoots, and step 4 records exactly those. Then in the background:
+    ```powershell
+    powershell -ExecutionPolicy Bypass -File private\tools\scenes-release.ps1 -Screens <scratch>\atlas-screens.json -NoPush
+    ```
+    (the full run: without `-Screens`). The script moves `Cargo.lock` to MoonUI's latest for its
+    build and puts it back after, so until its `== scenes:` line no edit and no cargo in this tree:
+    such a build would compile another MoonUI, and `--locked` would refuse. After that line the
+    tree is free, and the run itself stays off the developer's screen.
+
+    When it reports:
+    1. A non-zero exit, a warning about FAQ paths, or a full run that says it cannot be taken as
+       clean → stop here (see below).
+    2. Look at the pictures of those screens in the run directory (`report:` prints it). Wrong → stop
+       here.
+    3. Push from the site checkout (the script's `-Site`). This needs no separate command from the
+       developer:
+       ```powershell
+       npm run atlas:publish
+       git add -A -- src/data/atlas
+       git commit -m "chore(atlas): reshoot <what> (scene run <run>)"
+       git push
+       ```
+       Nothing staged means the pictures did not change (an unchanged picture keeps its address): no
+       commit, no push, go on to 4.
+    4. In `docs-internal/faq/STATUS.md` move `scenes-synced:` and `scenes-moonui:` to the commit and
+       the master noted above. On `atlas: nothing to reshoot` this is the whole of the step.
+    5. Check the FAQ against the change, and ask whether to rewrite it now or in a separate session:
+       `docs-internal/AGENTS.md`, "FAQ и снимки сайта", steps 4–5.
+
+    Stopped at 1 or 2 → both lines stay, so the next session is told again. The site checkout may be
+    left written and unpushed: tell the developer so, with the reason, in the `atlas:` line of the
+    report.
 16. Report back the merge commit, the PR URL, a one-line gate summary (fmt/build/clippy/test/
-    FireTest results), the `issues:` line from C2 with what was closed / rewritten / created, and
-    the result of the post-merge `main` test run from step 14.
+    FireTest results), the `issues:` line from C2 with what was closed / rewritten / created, the
+    result of the post-merge `main` test run from step 14, and `atlas: <n screens reshot, site commit
+    | nothing to reshoot | declined, in a separate session | stopped, site not pushed: <why>>`.
 
 ## Scope & hygiene rules
 
