@@ -93,7 +93,7 @@ machine → this stage does not apply.
     do not read it as nothing owed.
     - **M = 0, K = 0, no MoonUI commit that shows** → nothing visible changed (an inspector or a
       collections commit does not show). No question; the report says `atlas: nothing to reshoot`,
-      and step 15c only moves the two lines.
+      and step 15c runs only its FAQ text check and moves the two lines.
     - **A MoonUI commit that shows, or the diff adds a window, or changes the theme** → `affected`
       cannot see this whatever it printed: #1254 was a MoonUI bump alone, redrew every table header,
       and returned 0 screens. A change that shows on a few screens gets a list by hand; a change
@@ -336,7 +336,7 @@ Say in one line what is about to go out before every push and `gh pr merge` belo
 15c. The atlas, as answered in 6d — on the updated `main`, after step 14. Say in one line that the
     change is on `main`. If `main` moved after 6c, repeat 6c's commands: what landed since is on no
     list yet, and it goes into the same file. Note `git rev-parse HEAD` and MoonUI's master now: that
-    is what this run shoots, and step 4 records exactly those. Then in the background:
+    is what this run shoots, and item 6 below records exactly those. Then in the background:
     ```powershell
     powershell -ExecutionPolicy Bypass -File private\tools\scenes-release.ps1 -Screens <scratch>\atlas-screens.json -NoPush
     ```
@@ -345,13 +345,16 @@ Say in one line what is about to go out before every push and `gh pr merge` belo
     such a build would compile another MoonUI, and `--locked` would refuse. After that line the
     tree is free, and the run itself stays off the developer's screen.
 
-    When it reports:
+    When it reports (`<site>` is the checkout the script's `-Site` defaults to):
     1. A non-zero exit, a warning about FAQ paths, or a full run that says it cannot be taken as
        clean → stop here (see below).
-    2. Look at the pictures of those screens in the run directory (`report:` prints it). Wrong → stop
+    2. Only after a clean run: `node docs-internal/faq/faq-check.js <site>/src/data/faq/ru.json`. It
+       holds what the script's path check does not (a right click with no menu, a click chain that
+       misses a control, private text, a real IP). An `ERROR` line → stop here; `soft` lines only
+       inform.
+    3. Look at the pictures of those screens in the run directory (`report:` prints it). Wrong → stop
        here.
-    3. Push from the site checkout (the script's `-Site`). This needs no separate command from the
-       developer:
+    4. Push from `<site>`. This needs no separate command from the developer:
        ```powershell
        npm run atlas:publish
        git add -A -- src/data/atlas
@@ -359,19 +362,28 @@ Say in one line what is about to go out before every push and `gh pr merge` belo
        git push
        ```
        Nothing staged means the pictures did not change (an unchanged picture keeps its address): no
-       commit, no push, go on to 4.
-    4. In `docs-internal/faq/STATUS.md` move `scenes-synced:` and `scenes-moonui:` to the commit and
-       the master noted above. On `atlas: nothing to reshoot` this is the whole of the step.
-    5. Check the FAQ against the change, and ask whether to rewrite it now or in a separate session:
-       `docs-internal/AGENTS.md`, "FAQ и снимки сайта", steps 4–5.
+       commit, no push, go on to 5.
+    5. The FAQ's text. Whether an answer is still true nothing checks, so search
+       `<site>/src/data/faq/ru.json` for the control names and screen ids this change touched, and for
+       the words it uses (a field, a column, a behaviour): an answer can mention a control without
+       linking to it. Read the hits against the diff. Something to rewrite → write it into
+       `docs-internal/faq/STATUS.md`. A rewritten answer goes through `faq-check.js` again.
+    6. In `docs-internal/faq/STATUS.md` move `scenes-synced:` and `scenes-moonui:` to the commit and
+       the master noted above: last, so a session cut short before this is told again. If item 5 found
+       something, ask now: rewrite it now or in a separate session. Nothing found → no question.
 
-    Stopped at 1 or 2 → both lines stay, so the next session is told again. The site checkout may be
-    left written and unpushed: tell the developer so, with the reason, in the `atlas:` line of the
+    On `atlas: nothing to reshoot` the script did not run: `git -C <site> pull --ff-only`, then only
+    items 5 and 6. A change nothing shows can still make an answer false (a stop that now fires
+    differently).
+
+    Stopped at 1, 2 or 3 → both lines stay, so the next session is told again. The site checkout may
+    be left written and unpushed: tell the developer so, with the reason, in the `atlas:` line of the
     report.
 16. Report back the merge commit, the PR URL, a one-line gate summary (fmt/build/clippy/test/
     FireTest results), the `issues:` line from C2 with what was closed / rewritten / created, the
     result of the post-merge `main` test run from step 14, and `atlas: <n screens reshot, site commit
-    | nothing to reshoot | declined, in a separate session | stopped, site not pushed: <why>>`.
+    | nothing to reshoot | declined, in a separate session | stopped, site not pushed: <why>>` with
+    `faq: <n answers to rewrite | not touched | not checked: declined or stopped>`.
 
 ## Scope & hygiene rules
 
