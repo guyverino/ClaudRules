@@ -346,8 +346,8 @@ Say in one line what is about to go out before every push and `gh pr merge` belo
     tree is free, and the run itself stays off the developer's screen.
 
     When it reports (`<site>` is the checkout the script's `-Site` defaults to):
-    1. A non-zero exit, a warning about FAQ paths, or a full run that says it cannot be taken as
-       clean → stop here (see below).
+    1. A non-zero exit, a warning about FAQ paths or about the list of answers to read again, or a
+       full run that says it cannot be taken as clean → stop here (see below).
     2. Only after a clean run: `node docs-internal/faq/faq-check.js <site>/src/data/faq/ru.json`. It
        holds what the script's path check does not (a right click with no menu, a click chain that
        misses a control, private text, a real IP). An `ERROR` line → stop here; `soft` lines only
@@ -363,10 +363,19 @@ Say in one line what is about to go out before every push and `gh pr merge` belo
        ```
        Nothing staged means the pictures did not change (an unchanged picture keeps its address): no
        commit, no push, go on to 5.
-    5. The FAQ's text. Whether an answer is still true nothing checks, so search
-       `<site>/src/data/faq/ru.json` for the control names and screen ids this change touched, and for
-       the words it uses (a field, a column, a behaviour): an answer can mention a control without
-       linking to it. Read the hits against the diff. Something to rewrite → write it into
+    5. The FAQ's text. Whether an answer is still true nothing checks, so two sources of what to read,
+       and each misses what the other sees:
+       - **The list.** The script's `site: FAQ answers to read again` step printed it and wrote
+         `private/harvest/out/faq-review.md`, whose `scene run:` line must name the run just reported.
+         Everything under `To check` (a control gone, renamed, another kind) is read against the diff.
+         `For information` (a changed picture, a translated name, a moved control) only for the screens
+         this change meant to touch: a full run redraws nearly all of them.
+         On `atlas: nothing to reshoot` no list was made and an old file is not this change's.
+       - **The search.** The list knows only linked controls, and an answer can mention one without
+         linking to it, so still search `<site>/src/data/faq/ru.json` for the control names and screen
+         ids this change touched, and for the words it uses (a field, a column, a behaviour).
+
+       Read the hits against the diff. Something to rewrite → write it into
        `docs-internal/faq/STATUS.md`. A rewritten answer goes through `faq-check.js` again.
     6. In `docs-internal/faq/STATUS.md` move `scenes-synced:` and `scenes-moonui:` to the commit and
        the master noted above: last, so a session cut short before this is told again. If item 5 found
