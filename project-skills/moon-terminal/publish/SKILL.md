@@ -377,12 +377,19 @@ Say in one line what is about to go out before every push and `gh pr merge` belo
 
        Read the hits against the diff. Something to rewrite → write it into
        `docs-internal/faq/STATUS.md`. A rewritten answer goes through `faq-check.js` again.
+    5b. New interface. The script's `new interface` step wrote `private/harvest/out/new-ui.md`: what the
+       range added on screen, each line saying whether the FAQ has it. On `atlas: nothing to reshoot` the
+       script did not run, so `python private/harvest/cli.py new-ui` first. Each line ends in the site's
+       `src/data/changes.json`, as a `changes` entry pointing at an answer (a new one in `ru.json` when
+       none fits) or in `ignored` with the reason; the order is in `docs-internal/AGENTS.md`, «FAQ и снимки
+       сайта». Then `npm run check:faq` in `<site>`, and push like item 4. It holds nothing back: whatever is
+       left undecided is printed at the start of the next session.
     6. In `docs-internal/faq/STATUS.md` move `scenes-synced:` and `scenes-moonui:` to the commit and
        the master noted above: last, so a session cut short before this is told again. If item 5 found
        something, ask now: rewrite it now or in a separate session. Nothing found → no question.
 
     On `atlas: nothing to reshoot` the script did not run: `git -C <site> pull --ff-only`, then only
-    items 5 and 6. A change nothing shows can still make an answer false (a stop that now fires
+    items 5, 5b and 6. A change nothing shows can still make an answer false (a stop that now fires
     differently).
 
     Stopped at 1, 2 or 3 → both lines stay, so the next session is told again. The site checkout may

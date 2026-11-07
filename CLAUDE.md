@@ -289,10 +289,11 @@ bites on every second change. One run at this gate costs nothing and leaves the 
 
 Run whatever *static* checks the repo has — contract tests, lint, format: they catch architecture
 violations (hardcode, wrong layer, banned imports) before runtime. Contract tests that live inside
-the test suite are not run here: they ride the suite's one run at the end of the task (§6, R8).
-Build with the exact command
-from that block — all targets and features (conditional blocks, tests, benches and examples are
-where a signature break hides), plus the linter with **warnings denied**.
+the test suite are not run here: they ride the suite's one run at the publish step (§6, R8).
+Build with the exact command from that block what the developer will run or look at, plus the
+linter with **warnings denied** on the crates or packages the change touched, all their targets
+(tests, benches and examples are where a signature break hides). The workspace-wide lint, like the
+full suite, belongs to the publish step: a lint of untouched code finds nothing a task introduced.
 
 🚩 **Gate:** clean build **and** green static checks. A build that doesn't compile is never
 bypassable. A *pre-existing* failure may be stepped over only if I name it and show it also fails
@@ -362,27 +363,27 @@ or **refuted against the source** — never dismissed as "sounds plausible eithe
 auto-applied because it sounded confident. When a finding turns on how a third-party API or
 protocol actually behaves, **I fetch its current docs myself** before accepting or refuting it — a
 stale-API mismatch is invisible to pure code-reading, and §10 names the library and what I
-checked. Confirmed fixes go in as ONE batch, then §5's build and static checks re-run once — and
-the suite takes its one run (below). Zero findings is legitimate
+checked. Confirmed fixes go in as ONE batch, then §5's build and static checks re-run once, with
+the targeted tests below; the full suite waits for the publish step. Zero findings is legitimate
 only if I say "0 findings" out loud.
 
-🚩 **The full test suite runs ONCE per task, at the end** (R2, R8): after the last edit — this
-batch, or the §8/§9 edits when they follow it, or the §5 build when nothing was fixed — never at
-the §5 gate and never after every edit. **When §9 owes a `fix-diff`, the suite waits for its
-answer** — never started beside it or before it: finding a reason for one more edit is that
-agent's whole job, and the moment it finds one the suite runs again on the fixed tree. Beside
-`fix-diff` only the build and the linter run (the §5 re-run the batch owes anyway); the suite
-follows its answer — after its fix, or after "0 `high`".
-A red end-of-task run, its fix and the re-run is the one tolerated second run. It runs through the
-recorder, so the tree it passed on is remembered and the publish step does not test it again:
-`node "{{CLAUDE_HOME}}\pipeline\tested-tree.js" run -- <the repo's suite command>` — spelled
-exactly as the repo's publish step spells it, because the record matches on the command — and
-before any suite run in a later step (a publish, a post-merge check),
-`… tested-tree.js check -- <the same command>`: exit 0 = this exact tree already passed under this
-exact command, skip it and say so; any other exit = run it, through `run`. A bug's repro test (§1,
-§7) is targeted and is not this run. Between edits a `build` is enough; a **targeted** run on the one
-failing case (`cargo test -p crate name`) is the build-equivalent and is not bounded — but it is
-run **once per edit**: the same command again with nothing changed between only re-prints what
+🚩 **The full test suite runs ONCE per change, at the publish step — not per task** (R2, R8; the
+developer's call on 2026-11-07, when a task's rounds cost 30 minutes of builds and full runs, most
+of it re-testing code the round never touched). Inside a task, after each fix batch: the build of
+what the developer looks at, the linter on the touched crates (§5), and the **targeted** tests of the
+modules the change touched (`cargo test -p crate module`) — where that is cheap. A crate whose test
+target rebuilds a heavy binary is left to the publish run, and §10 says so. The full suite runs
+inside a task only when the developer asks, or when the change is to the test infrastructure
+itself. **When §9 owes a `fix-diff`, nothing more than the build and the linter runs beside it**:
+finding a reason for one more edit is that agent's whole job.
+The publish run goes through the recorder, so a tree that passed is remembered and not tested
+again: `node "{{CLAUDE_HOME}}\pipeline\tested-tree.js" run -- <the repo's suite command>` —
+spelled exactly as the repo's publish step spells it, because the record matches on the command —
+and before any suite run, `… tested-tree.js check -- <the same command>`: exit 0 = this exact tree
+already passed under this exact command, skip it and say so; any other exit = run it, through
+`run`. A red publish run, its fix and the re-run is the one tolerated second run. A bug's repro test
+(§1, §7) is targeted and is not this run. A **targeted** run (`cargo test -p crate name`) is the
+build-equivalent and is not bounded — but it is run **once per edit**: the same command again with nothing changed between only re-prints what
 was already on screen, and each re-run is a whole turn over the full context. The batch itself
 lands in **one pass**: every confirmed fix, then one build — not fix, check, next fix, next check
 (seven checks in 76 s on one round). One pass is **atomic**: Edit calls in one response, or ONE
@@ -473,11 +474,10 @@ Below that condition I read my own delta and the build covers it. This is the on
 pipeline trusts my proofreading, and it is a measured call (R2), not a mood.
 
 🚩 **Gate:** it runs **once**. A confirmed `high` → fix, build, and I read that fix myself — no
-second run; the checker warns on it. The full suite (§6) is not started until this answer is
-in — the build and the linter may run beside it, the suite may not; the checker warns on a suite
-launched before the answer when its fix then re-ran it. A suite started after the answer that
-goes red, its fix and the re-run is §6's tolerated second run, not this. Wrote nothing after §6 → §6
-already covered the shipping tree; say so in §10.
+second run; the checker warns on it. Only the build and the linter run beside it; the targeted
+tests follow its answer, and the full suite waits for the publish step (§6) — the checker warns on
+a suite launched before the answer when its fix then re-ran it. Wrote nothing after §6 → §6 already
+covered the shipping tree; say so in §10.
 
 ## 10. Receipt — this block IS my completion message
 

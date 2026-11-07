@@ -249,9 +249,11 @@ function gateDelta(c) {
   }
 }
 
-// §6: the whole test suite runs ONCE per task, at the end — after the fix batch — not at the §5
-// gate and not after every edit (R8: 58 % of all cargo time was test runs, 3–5 full runs per
-// landed change). Two are tolerated: a red end-of-task run, its fix, and the re-run. Before R8
+// §6: the whole test suite runs ONCE per change, at the publish step — inside a task only the
+// build, the touched crates' linter and targeted tests (R8: 58 % of all cargo time was test runs,
+// 3–5 full runs per landed change; on 2026-11-07 the developer moved the full run out of the task
+// altogether). No run at all inside a task is therefore the shape, never a finding. Two are
+// tolerated: a red publish run, its fix, and the re-run. Before R8
 // the shape was two and the bound three; 43 test runs across four tasks, 13 on one button.
 // `test` is decided on the FULL command at digest time, like `build`; the stored copy is cut at
 // 300 characters and a long prefix would hide the run. Older digests lack the flag — fall back.
@@ -282,7 +284,7 @@ function gateTestRuns(c) {
     prevFull = s.step;
   }
   if (worst > 2) {
-    c.lines.push("WARN  s6 - the full test suite ran " + worst + " times on one tree: once at the end of the task, after the §6 batch, is the shape; build between edits, test once");
+    c.lines.push("WARN  s6 - the full test suite ran " + worst + " times on one tree: once, at the publish step, is the shape; inside a task the build, the touched crates' linter and targeted tests");
   }
   // §9: the suite waits for fix-diff's answer. Run beside it (or before it) on the tree it was
   // reviewing, it is thrown away the moment fix-diff finds something — and that pair is exactly
