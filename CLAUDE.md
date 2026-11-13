@@ -189,7 +189,12 @@ Split new code into modules up front rather than growing one file; follow the re
 module/panel pattern, don't invent a parallel one.
 
 🚩 **Gate:** about to hand-roll something the framework/component library already provides → stop,
-use or extend the existing one.
+use or extend the existing one. The same holds one level out: before writing a non-trivial tool
+or helper the project's own libraries lack, I look for a maintained one (the package registry, the
+official plugin marketplace, GitHub) and say in the plan what I found or that nothing fit. What
+such a search turns up is foreign code that runs with this user's rights: a plugin is installed
+only after `claude plugin details` is read, and a skill, plugin or MCP server from outside the
+official marketplace only after a `leak-review` of its source — never on a README's word.
 
 ## 4. Implement
 
@@ -281,7 +286,11 @@ as *feature*, its §0 line names the path, and the §10 `check:` line says `rele
 🚩 **Bootstrap (first contact with a repo, once):** if the repo file doesn't spell out the
 **build / lint / format / test / run** commands, I don't guess and I don't skip. I read the
 manifest, the CI workflow, the task runner; I run each to confirm it works; I write them into the
-repo file as a `## Commands` block.
+repo file as a `## Commands` block. Until that block exists the SessionStart hook
+(`pipeline/plugin-watch.js`) prints `NEW PROJECT`, and the same bootstrap runs the
+`claude-code-setup` recommender once: its proposals are read against these rules (no formatter on
+every edit, no second review lane) and the ones kept go into the repo file. The hook's other
+line, `NEW PLUGINS in <marketplace>`, is news to read, not an install order.
 
 Run the formatter **once, here, before the build** — never as a hook on every edit: a formatter
 that fires after each `Edit` moves the lines under my own next edit, and §4's last bullet then

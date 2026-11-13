@@ -4,6 +4,7 @@
 //   UserPromptSubmit -> report mode (surfaces an unread report on the next task)
 //   UserPromptSubmit -> reply-lang.js (pins the reply language from reply-lang.local; silent without it)
 //   SessionStart     -> leak-check.js status (one line when commits by others await a leak review)
+//   SessionStart     -> plugin-watch.js (new plugins in a known marketplace; a repo with no ## Commands)
 //   PreToolUse       -> no-poll.js on Bash|PowerShell (refuses a sleep loop or a 30 s+ wait, §7)
 //   PreToolUse       -> ask-lang.js on AskUserQuestion (refuses an English question; silent without reply-lang.local)
 //   env.CLAUDE_CODE_PLUGIN_DIRS -> every mod folder under pipeline/mods/
@@ -25,10 +26,11 @@ const LEAK = path.join(ROOT, ".claude", "pipeline", "leak-check.js");
 const NO_POLL = path.join(ROOT, ".claude", "pipeline", "no-poll.js");
 const REPLY_LANG = path.join(ROOT, ".claude", "pipeline", "reply-lang.js");
 const ASK_LANG = path.join(ROOT, ".claude", "pipeline", "ask-lang.js");
+const PLUGIN_WATCH = path.join(ROOT, ".claude", "pipeline", "plugin-watch.js");
 // Match our own scripts by folder + filename in either separator style. A bare filename would
 // also claim an unrelated third-party hook that happens to be named gate-check.js; a marker with
 // one fixed separator would match neither, and every run would append a duplicate.
-const MARKS = ["gate-check.js", "leak-check.js", "no-poll.js", "reply-lang.js", "ask-lang.js"].flatMap((f) => ["pipeline\\" + f, "pipeline/" + f]);
+const MARKS = ["gate-check.js", "leak-check.js", "no-poll.js", "reply-lang.js", "ask-lang.js", "plugin-watch.js"].flatMap((f) => ["pipeline\\" + f, "pipeline/" + f]);
 const isOurs = (c) => typeof c === "string" && MARKS.some((m) => c.includes(m));
 // Which of our scripts a command runs, separator-neutral; "" for anything not ours.
 const scriptOf = (c) => {
@@ -47,6 +49,7 @@ const leakCmd = '"' + NODE + '" "' + LEAK + '" status';
 const noPollCmd = '"' + NODE + '" "' + NO_POLL + '"';
 const replyLangCmd = '"' + NODE + '" "' + REPLY_LANG + '"' + prefixArg;
 const askLangCmd = '"' + NODE + '" "' + ASK_LANG + '"' + prefixArg;
+const pluginWatchCmd = '"' + NODE + '" "' + PLUGIN_WATCH + '"' + prefixArg;
 
 if (!fs.existsSync(SETTINGS)) {
   console.error("no settings.json at " + SETTINGS + " - nothing to install into");
@@ -134,6 +137,9 @@ install("UserPromptSubmit", "", 5, replyLangCmd);
 // leak-reviewed: one line at session start, or nothing. It fetches that branch into a private
 // ref (bounded to 6 s) and reads local git state; 15 s is plenty.
 install("SessionStart", "status", 15, leakCmd);
+// Plugins a known marketplace added since the last look, and a repo that still owes the §5
+// bootstrap: local files only, no network, so 5 s is generous.
+install("SessionStart", "", 5, pluginWatchCmd);
 // A shell command that polls with sleep is refused before it runs (§7): the checker's WARN comes
 // a task too late to save the turn that waited. Only the two shell tools; a Read never sleeps.
 install("PreToolUse", "", 10, noPollCmd, "Bash|PowerShell");
