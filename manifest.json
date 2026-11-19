@@ -72,6 +72,7 @@
     "pipeline/tests/ledger.test.js",
     "pipeline/tests/mods.test.js",
     "pipeline/tests/nopoll.test.js",
+    "pipeline/tests/orchestrate.test.js",
     "pipeline/tests/parallel.test.js",
     "pipeline/tests/pluginwatch.test.js",
     "pipeline/tests/release.test.js",

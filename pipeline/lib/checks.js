@@ -539,6 +539,75 @@ function gateSmall(c) {
   }
 }
 
+// §0.7 — orchestration. Two sides, each judged from its own journal:
+//  - the orchestrator (class `orchestrate`) splits the work, launches at most WORKER_CAP workers
+//    with a model it picked for each, writes no code itself, audits a worker's journal before
+//    merging its branch, and puts one `seams` angle over the integrated diff once two parts meet;
+//  - a worker (its task opened by a brief) runs the whole pipeline and never ships: its branch is
+//    merged by the orchestrator, and the integration branch is published once.
+// The cap is the developer's call of 19.11.2026: four parallel parts, each with its own reviewers
+// and its own build tree, is already more than one machine builds comfortably.
+const WORKER_CAP = 4;
+// The declared class NAME is orchestrate — the first word after `Class:` / `Класс:`, or the first
+// word of an arrow line. Never a substring test: "orchestrator" is this pipeline's own word for the
+// main model and turns up in class lines of ordinary tasks.
+const isOrchestrate = (cls) => /^\s*(?:\*\*)?\s*(?:(?:class|класс)(?:\s*\+\s*(?:recipe|рецепт))?\s*(?:\*\*)?\s*[:—-]\s*(?:\*\*)?\s*)?(?:orchestrate|оркестрац)/i.test(cls || "");
+function gateOrchestrate(c) {
+  const d = c.d;
+  const workers = d.agents.filter((a) => a.brief);
+  const briefs = (d.sends || []).filter((s) => s.brief);
+  if (isOrchestrate(c.cls)) {
+    if (!workers.length && !briefs.length) c.lines.push("WARN  s0.7 - orchestrate declared, yet no brief was sent: a worker's prompt opens with [orchestrator-brief]");
+    // A worker session briefed twice (a WARN sent back to it) is one worker.
+    const count = workers.length + new Set(briefs.map((s) => s.to)).size;
+    if (count > WORKER_CAP) c.lines.push("WARN  s0.7 - " + count + " workers briefed, the cap is " + WORKER_CAP + ": merge parts or run them in two rounds");
+    const unpicked = workers.filter((w) => !w.model);
+    if (unpicked.length) c.lines.push("WARN  s0.7 - " + unpicked.length + " worker(s) launched with no explicit model: the orchestrator picks opus / sonnet / haiku per part and says why");
+    const unquoted = workers.concat(briefs).filter((b) => !b.quote);
+    if (unquoted.length) c.lines.push("WARN  s0.7 - " + unquoted.length + " brief(s) without a `developer said:` line: the worker has no authority beyond a message from another Claude");
+    if (c.codeTouched && !skipDeclared(c.said, "orchestrat|оркестр")) c.lines.push("WARN  s0.7 - the orchestrator edited project code itself: a part goes to a worker, a merge conflict included");
+    // Each merge of a worker's branch needs an audit of a worker journal before it — counted, not
+    // matched: the record ties an agent id to its branch nowhere a script can read.
+    // An audit that found no journal exits non-zero (gate-check.js), and the own session — pinned
+    // onto every by-hand digest — is not a worker.
+    const own = String((d.meta && d.meta.session) || "");
+    const isOwn = (a) => a.startsWith("session:") && own && (own.startsWith(a.slice(8)) || a.slice(8).startsWith(own));
+    const merged = new Set();
+    let lastMerge = 0;
+    let warned = false;
+    // No early exit: the seams check below needs every merge counted and the last one's step.
+    for (const s of d.shell.filter((x) => (x.workMerges || []).length && !x.failed)) {
+      for (const b of s.workMerges) merged.add(b);
+      lastMerge = s.step;
+      const audits = new Set(d.shell.filter((x) => x.audit && !x.failed && x.step < s.step && !isOwn(x.audit)).map((x) => x.audit));
+      if (!warned && audits.size < merged.size) {
+        c.lines.push("WARN  s0.7 - " + s.workMerges.join(", ") + " was merged (step " + s.step + ") with " + audits.size + " worker audit(s) for " + merged.size + " merged part(s): run gate-check.js digest --hand --agent <id> before accepting a part");
+        warned = true;
+      }
+    }
+    // Over the INTEGRATED diff: a seams run before the last merge saw parts that had not met yet.
+    const seamsAfter = d.agents.some((a) => a.type === "seams" && a.step > lastMerge);
+    if (merged.size >= 2 && !seamsAfter && !skipDeclared(c.said, "seams")) {
+      c.lines.push("WARN  s0.7 - " + merged.size + " parts were merged and no seams angle ran over the integrated diff: each part was reviewed alone, never where they meet");
+    }
+  }
+  // The offer (§0.7 "When"): a big feature or refactor done alone, with no window that asked about
+  // splitting it. A note, not a WARN — whether the parts were truly independent is a judgement the
+  // record cannot make; the note only makes the question visible.
+  if (/(feature|фич|refactor|рефактор)/i.test(c.cls) && !isOrchestrate(c.cls) && !d.brief) {
+    const code = c.projectWrites.filter((w) => CODE_FILE_RE.test(w.file) && !TEST_OR_DOC_RE.test(w.file));
+    const dirs = new Set(code.map((w) => String(w.file).toLowerCase().replace(/\\/g, "/").replace(/\/[^/]*$/, "")));
+    const offered = (d.asks || []).some((a) => /(оркестр|orchestrat|разби|split|параллел|parallel)/i.test(a.text || ""));
+    if (distinctFiles(code) >= 8 && dirs.size >= 3 && !offered) {
+      c.info.push("note  s0.7 - " + distinctFiles(code) + " code files across " + dirs.size + " folders done alone, and splitting was never offered: was it one part?");
+    }
+  }
+  if (d.brief) {
+    const shipped = d.shell.some((s) => flag(s, "ship", SHIP_RE)) || d.skills.some((s) => /^publish$/i.test(s.skill));
+    if (shipped) c.lines.push("WARN  s0.7 - a worker pushed, merged on the forge or ran /publish: the orchestrator merges its branch and publishes the integration branch once");
+  }
+}
+
 function check(d, cwd) {
   const c = contextOf(d, cwd);
   headline(c);
@@ -558,6 +627,7 @@ function check(d, cwd) {
   gateUnderstanding(c);
   gateSleep(c);
   gateSmall(c);
+  gateOrchestrate(c);
 
   const warnings = c.lines.filter((l) => l.startsWith("WARN"));
   const summary =

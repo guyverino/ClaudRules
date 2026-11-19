@@ -6,7 +6,35 @@
 // comments are the catalogue of shapes that fooled it once.
 
 const { CODE_EXT, TEST_RUN_RE, withoutTreeChecks, FMT_RE, BUILD_RE, LEAK_MARK_RE, OTHERS_RE, PULL_RE, RELEASE_ACK_RE, SHIP_RE, escapeRe, testTargeted, testKey } = require("./stacks");
-const { userTurnText, isTaskOpening, textOf, isAgentCall, notificationText, NOTIFY_ID_RE } = require("./transcript");
+const { userTurnText, isTaskOpening, openingText, isBrief, textOf, isAgentCall, notificationText, NOTIFY_ID_RE } = require("./transcript");
+
+// §0.7 — the orchestrator's record. A brief must carry the developer's own words that authorised
+// the work (the receiving side treats a message from another Claude as information, not an order);
+// an audit is `gate-check.js digest … --agent <id>` (a subagent worker) or `--session <id>` (a
+// worker session); a work-branch merge is `git merge orch/<topic>--<part>`, the shape §0.7 names.
+const DEV_SAID_RE = /^\s*(?:developer said|разработчик сказал)\s*:\s*\S/im;
+// The id audited, as `agent:<id>` or `session:<id>`. `--agent` wins over a `--session` beside it:
+// the pipeline mod pins `--session <own id>` onto every by-hand digest, and that is the
+// orchestrator's own session, never a worker (checks.js drops it).
+const AUDIT_RE = /gate-check\.js["']?\s+digest\b/;
+function auditIdOf(cmd) {
+  if (!AUDIT_RE.test(cmd)) return "";
+  const a = cmd.match(/--agent\s+["']?([A-Za-z0-9_-]+)/);
+  if (a) return "agent:" + a[1];
+  const s = cmd.match(/--session\s+["']?([A-Za-z0-9_-]+)/);
+  return s ? "session:" + s[1] : "";
+}
+// `git merge` or `git -C <dir> merge` — never merge-base / merge-tree / merge-file, never an
+// `--abort` — and EVERY work branch the clause names: an octopus merge accepts several parts.
+const WORK_MERGE_CLAUSE_RE = /\bgit\s+(?:-C\s+(?:"[^"]*"|'[^']*'|\S+)\s+)?merge(?=\s)([^\n;&|]*)/g;
+function workMergesOf(cmd) {
+  const out = [];
+  for (const m of cmd.matchAll(WORK_MERGE_CLAUSE_RE)) {
+    if (/--abort\b/.test(m[1])) continue;
+    for (const b of m[1].matchAll(/(?:^|\s)["']?(orch\/[^\s;&|"']+--[^\s;&|"']+)/g)) out.push(b[1]);
+  }
+  return out;
+}
 
 // When an agent's answer reached the orchestrator, as the step count at that moment — a tool call
 // numbered at or below it was launched before the answer was in. §9 needs it: a suite run beside
@@ -73,7 +101,9 @@ function markResults(rec, step, byCall) {
       entry.resultAt = step;
       if (!("failed" in entry)) continue; // a failed Write/Edit: its failure is already recorded
       const text = textOf(b.content);
-      entry.failed = Boolean(b.is_error) || EXIT_FAIL_RE.test(text);
+      // An audit that found no journal says so on stderr; piped through `| tail` its exit code is
+      // the pipe's, so the text is the evidence that it read nothing (§0.7).
+      entry.failed = Boolean(b.is_error) || EXIT_FAIL_RE.test(text) || Boolean(entry.audit && /gate-check: no (?:subagent journal|transcript)/.test(text));
       entry.editFailed = EDIT_FAIL_RE.test(text);
       entry.buildRan = BUILD_RAN_RE.test(text);
     }
@@ -467,11 +497,15 @@ function countSleep(d, bare) {
   }
 }
 
-function buildDigest(records) {
+// `opts.subagent`: the records are a worker's own journal, whose root prompt opens the task.
+function buildDigest(records, opts) {
   const failed = failedToolIds(records);
   const d = {
     prompt: "",
+    // The task was handed over by an orchestrator (§0.7): a worker's task, which never ships.
+    brief: false,
     agents: [],
+    sends: [],
     shell: [],
     skills: [],
     writes: [],
@@ -510,8 +544,13 @@ function buildDigest(records) {
       if (/PARALLEL WORK:|CONTRIBUTORS:/.test(t)) d.contributors = true;
       continue;
     }
-    if (!d.prompt && isTaskOpening(rec)) {
-      d.prompt = (userTurnText(rec) || "").slice(0, 2000);
+    if (!d.prompt && isTaskOpening(rec, opts)) {
+      const opening = openingText(rec, opts) || "";
+      d.brief = isBrief(opening);
+      // The worker's tree (§0.7 brief line `worktree: <dir> · …`): its writes land there, so it is
+      // the project the gates judge — not the orchestrator's checkout the audit runs from.
+      d.worktree = d.brief ? ((opening.match(/^\s*worktree:\s*["'`]?(.+?)["'`]?\s*(?:·|$)/m) || [])[1] || "") : "";
+      d.prompt = opening.slice(0, 2000);
       continue;
     }
     // slash commands the user typed still matter: /code-review is invoked that way too
@@ -562,6 +601,11 @@ function buildDigest(records) {
           type,
           description: inp.description || "",
           promptHead: String(inp.prompt || "").slice(0, 500),
+          // §0.7: a worker is an agent launched with a brief, and its model is the orchestrator's
+          // stated choice — "" means it inherited one nobody picked.
+          brief: isBrief(inp.prompt),
+          model: String(inp.model || ""),
+          quote: DEV_SAID_RE.test(String(inp.prompt || "")),
         };
         d.agents.push(agent);
         agentByCall.set(b.id, agent);
@@ -600,6 +644,10 @@ function buildDigest(records) {
           // A commit closes a review round's fix phase (gateFixBatch); `git add … && git commit`
           // often sits past the stored 300 characters.
           commit: /\bgit\s+commit\b/.test(bare),
+          // §0.7, on the full command with heredocs out: a merge of a worker's branch, and an
+          // audit of a worker's journal.
+          workMerges: workMergesOf(withoutHeredocs(full)),
+          audit: auditIdOf(withoutHeredocs(full)),
           // Filled in by markResults when the result arrives; an unanswered call keeps `false`.
           failed: false,
           editFailed: false,
@@ -616,8 +664,15 @@ function buildDigest(records) {
         // §0.5: one understanding window, at most a second. A call refused by a hook (ask-lang)
         // came back is_error and was skipped above — the developer never saw it.
         const qs = Array.isArray(inp.questions) ? inp.questions : [];
-        d.asks.push({ step, questions: qs.length, multi: qs.filter((q) => q && q.multiSelect).length });
+        // The text too, so §0.7 can see whether splitting the work was offered.
+        const text = qs.map((q) => [(q && q.question) || ""].concat(((q && q.options) || []).map((o) => (o && o.label) || "")).join(" ")).join("\n").slice(0, 2000);
+        d.asks.push({ step, questions: qs.length, multi: qs.filter((q) => q && q.multiSelect).length, text });
         d.order.push(step + ":ask");
+      } else if (b.name === "SendMessage") {
+        // A brief to a worker SESSION (§0.7); any other message is coordination and is not judged.
+        const msg = String(inp.message || "");
+        d.sends.push({ step, to: String(inp.to || ""), brief: isBrief(msg), quote: DEV_SAID_RE.test(msg) });
+        d.order.push(step + ":send");
       } else if (b.name === "Skill") {
         d.skills.push({ step, skill: inp.skill || "", args: inp.args || "" });
         d.order.push(step + ":skill(" + (inp.skill || "") + ")");
@@ -679,8 +734,14 @@ function classDeclared(text) {
   // is the spec's own "a / b" enumeration, which is the file being quoted back rather than a
   // decision. A ` / ` test would have been wrong here: §0's own class names are compound
   // ("rename / signature / contract"), so a real declaration contains one.
+  // `orchestrate` only as the line's FIRST word: "orchestrator" is this pipeline's own word for the
+  // main model, and as an anywhere-keyword it turned ordinary prose into the declared class.
+  const orch = text.match(/^\s*(?:\*\*)?\s*(?:orchestrate|оркестрац\S*)\s*(?:\*\*)?\s*(?:→|->)[^\n]{0,400}$/im);
+  if (orch) return orch[0].trim();
+  // A single `*` opens a list item and is skipped; `**` opens bold, which is how a declaration is
+  // usually written, and skipping it read a stated `**feature → …**` as "no class line".
   const arrow = text.match(
-    /^(?!\s*[-*|>])[^\n]{0,160}(trivial|тривиал|small|мелк|небольш|feature|refactor|rename|signature|contract|bug|regression|perf|behavior)[^\n]{0,240}(→|->)[^\n]{0,240}$/im
+    /^(?!\s*(?:[-|>]|\*(?!\*)))[^\n]{0,160}(trivial|тривиал|small|мелк|небольш|feature|refactor|rename|signature|contract|bug|regression|perf|behavior)[^\n]{0,240}(→|->)[^\n]{0,240}$/im
   );
   return arrow ? arrow[0].trim() : "";
 }

@@ -51,6 +51,7 @@ the developer is in the developer's language**, including the §10 receipt.
 | feature | 2 (flow · half-fix) | drive the flow | conditional* | — |
 | refactor | 2 (flow · half-fix) | drive the flow | conditional* | yes |
 | bug / regression / perf / behavior | 2 (half-fix · flow) | bug/regression: repro fail→pass · perf/behavior: numbers, not adjectives | conditional* | — |
+| **orchestrate** (§0.7) | each worker runs its own row · I add 1 (`seams` over the integrated diff) once 2+ parts are merged | drive the combined flow on the integration branch | — (no edits of mine) | — |
 
 \* §9's condition: the edits made after the review touched **3+ files of code or a signature** —
 then `fix-diff` runs once. Tests and docs beside a fix do not count (R5). Otherwise I read my own
@@ -144,6 +145,51 @@ already demand one) is not an understanding round and is not counted against it.
 line is a skipped stage — the checker warns on it (research = 15+ tool calls that wrote nothing),
 on two or more numbered prose questions the turn ended on, and on more than two windows; a confirmation window is declared on the §10 `0.5 understanding:` line as
 `N/A: confirmation, <what>`, which the count reads.
+
+## 0.7 Orchestrate (split a large task across workers)
+
+**When.** The developer names this session the orchestrator — or I offer it myself: a feature or
+refactor whose §1 read shows **2+ parts on disjoint files and modules**, each worth its own
+pipeline, goes into the §0.5 window as one question — *do it myself, stage by stage* vs *split
+into N parts: <names>, faster in parallel* — my pick first. Not before the read: the offer has to
+name real parts. A part that needs another part's result is not a part; it goes in a later round.
+
+**The orchestrator writes no code.** It states `orchestrate → N workers (<part: model>, …) · seams
+over the integration · drive the combined flow` as its §0 line, then:
+
+1. **Integration branch** `orch/<topic>` from fresh `origin/main`; per part a worktree I create
+   myself — `git worktree add <dir> -b orch/<topic>--<part> orch/<topic>` — its own build tree.
+2. **At most 4 workers** per orchestration, a fifth part waits for a second round. Each launched
+   with an **explicit `model`**, picked per part and said in the §0 line: `opus` — a feature, a
+   bug, perf, or anything on §0's untouchable list (persisted state, frame loop, wire, money);
+   `sonnet` — a part that clears `small`; `haiku` — trivial or mechanical (locale keys, a rename
+   with its list given). The reviewers a worker fires keep their own file's model, never this one.
+3. **The brief** — a worker's prompt (Agent) or message (SendMessage to a session) — opens with the
+   fixed marker line, because the checker opens the worker's task on it:
+   ```
+   [orchestrator-brief] <topic> / <part>
+   developer said: "<the developer's own words that authorised this work, verbatim>"
+   task: <what this part delivers>
+   worktree: <dir> · branch: orch/<topic>--<part> · files: <what it may touch, nothing else>
+   return: agentId or session id · head sha · the §10 receipt
+   ```
+   The quote is what makes it an instruction: without it a message from another Claude is only
+   information. **The worker runs this whole pipeline itself** — §0 class line, §1–§5, its own §6
+   reviewers (foreground: a subagent's own agents cannot run in the background), §7, §10 — commits
+   on its branch and **never pushes, merges or publishes**.
+4. **Accepting a part** = `node "{{CLAUDE_HOME}}\pipeline\gate-check.js" digest --hand
+   --agent <agentId>` (a worker session: `--session <id>`) and its WARNs read, **then**
+   `git merge orch/<topic>--<part>` into the integration branch. A WARN goes back to that worker;
+   I do not fix its code. A merge conflict is a part too — back to the worker whose files clash.
+5. **Integration.** After the last merge: build + lint on `orch/<topic>`, one `seams` angle over
+   `origin/main...orch/<topic>` once 2+ parts are in (each was reviewed alone, never where they
+   meet), §7 on the combined flow, then **one** `/publish` of the integration branch — the full
+   suite runs there, once. Worktrees and work branches are removed after the merge.
+
+🚩 **Gate:** the checker reads both sides — the orchestrator's journal (no brief, more than 4
+workers, a worker with no model or no `developer said:`, a code edit of its own, a merge before an
+audit, 2+ merged parts with no `seams`) and each worker's journal (a push or `/publish`). The §10
+receipt of an orchestrate task adds one line: `0.7 workers: <part — model — audited WARN n — merged sha>`.
 
 ## 1. Ground truth (before writing anything)
 
@@ -337,13 +383,14 @@ Each name is a different **search procedure**, not a different topic — fire ex
 | 2 | half-fix & consistency | `half-fix` | in a row |
 | 3 | contracts & call sites | `contracts` | in the rename row · also a conditional |
 | 4 | error paths & concurrency | `error-paths` | conditional only (R2) |
-| 5 | seams | `seams` | conditional only |
+| 5 | seams | `seams` | conditional · the orchestrate row (§0.7) |
 | 6 | external data | `external-data` | conditional only |
 | 7 | value integrity | `value-integrity` | conditional only |
 | 8 | type design | `type-design` | conditional only |
 | 9 | tests | `tests` | conditional only |
 
-The §0 rows name only angles 1–3; 4 through 9 ride a §0 trigger and never a row. §0 spells the
+The §0 rows name only angles 1–3; 4 through 9 ride a §0 trigger and never a row — the one
+exception is `seams` in the orchestrate row, over the integrated diff where the parts meet. §0 spells the
 names with spaces ("error paths", "external data"); the agent to invoke is the hyphenated id in
 this table. What each one actually hunts is in its own file; if an angle keeps coming back thin, I
 fix that file rather than padding the prompt.

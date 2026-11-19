@@ -54,21 +54,33 @@ function breadcrumb(what, e) {
   }
 }
 
+// The directory a journal was recorded in: the first record that names one. Git Bash spells a
+// drive as `/d/...`; the project test compares `d:/...`.
+function journalCwd(records) {
+  const r = records.find((x) => x && typeof x.cwd === "string" && x.cwd);
+  return r ? r.cwd.replace(/\\/g, "/").replace(/^\/([a-z])\//i, "$1:/") : "";
+}
+
 // --- modes ------------------------------------------------------------------------------
 function digest() {
   const hook = parseHook(readStdin());
   const file = findTranscript(hook, ROOT);
   if (!file) {
     process.stdout.write("{}");
+    // A pinned by-hand run that found nothing fails loudly: an orchestrator's audit of a worker
+    // (§0.7) that read no journal must not pass for an audit.
+    if (!hook.session_id && /(?:^|\s)--(?:agent|session)\b/.test(process.argv.slice(2).join(" "))) process.exitCode = 1;
     return;
   }
   const sid = sessionIdOf(hook, file);
   const parsed = parseTranscript(file);
-  const d = buildDigest(parsed.preamble.concat(parsed.records));
+  const d = buildDigest(parsed.preamble.concat(parsed.records), { subagent: parsed.subagent });
   d.meta = {
     transcript: file,
     session: sid,
-    cwd: hook.cwd || process.cwd(),
+    // A worker's project is the worktree its brief names (§0.7); a by-hand run of a pinned journal
+    // judges it against that journal's own directory, not the one the audit happens to run from.
+    cwd: d.worktree || hook.cwd || journalCwd(parsed.records) || process.cwd(),
     recordsInTask: parsed.records.length,
     recordsScanned: parsed.total,
     tailTruncated: parsed.truncated,

@@ -37,6 +37,29 @@ function findTranscript(hook, root) {
   // for real, a digest built from a neighbour's task and reported as this one's.
   const sAt = process.argv.indexOf("--session");
   const wanted = sAt !== -1 ? process.argv[sAt + 1] || "" : "";
+  // `--agent <id>` takes a WORKER's journal instead: the orchestrator audits each part it accepts
+  // (CLAUDE.md §0.7), and a subagent's record lives in `<session>/subagents/agent-<id>.jsonl`,
+  // never at the project level. A --session beside it narrows the search to that session's folder.
+  const aAt = process.argv.indexOf("--agent");
+  if (aAt !== -1) {
+    const agentId = String(process.argv[aAt + 1] || "").replace(/^agent-/, "");
+    if (!agentId || agentId.startsWith("--")) {
+      process.stderr.write("gate-check: --agent given with no id\n");
+      return null;
+    }
+    const name = "agent-" + agentId + ".jsonl";
+    const dirs = [projDir].concat(fs.existsSync(projects) ? fs.readdirSync(projects).map((dd) => path.join(projects, dd)) : []);
+    for (const dd of dirs) {
+      if (!fs.existsSync(dd)) continue;
+      for (const sess of fs.readdirSync(dd)) {
+        if (wanted && !sess.startsWith(wanted)) continue;
+        const p = path.join(dd, sess, "subagents", name);
+        if (fs.existsSync(p)) return p;
+      }
+    }
+    process.stderr.write("gate-check: no subagent journal " + name + (wanted ? " under session " + wanted : "") + "\n");
+    return null;
+  }
   if (sAt !== -1 && !wanted) {
     process.stderr.write("gate-check: --session given with no id; using the newest transcript\n");
   }
@@ -84,8 +107,19 @@ function findTranscript(hook, root) {
 
 function sessionIdOf(hook, file) {
   if (hook.session_id) return hook.session_id;
-  return file ? path.basename(file, ".jsonl") : "";
+  // A worker's journal is named `agent-<id>`: the id alone, so its 8-character short form names
+  // the worker rather than reading "agent-a1" for every one of them.
+  return file ? path.basename(file, ".jsonl").replace(/^agent-/, "") : "";
 }
+
+// A subagent's own journal, as opposed to a session's: its records are all `isSidechain`, so the
+// ordinary task opening never matches in it.
+const SUBAGENT_FILE_RE = /[\\/]subagents[\\/]agent-[^\\/]+\.jsonl$/i;
+
+// The first line of an orchestrator's brief (CLAUDE.md §0.7). A fixed English marker on purpose:
+// the checker matches it, and the rest of the brief is in whatever language the parties use.
+const BRIEF_MARK_RE = /^\s*\[orchestrator-brief\]/;
+const isBrief = (text) => BRIEF_MARK_RE.test(String(text || ""));
 
 // Read only the tail: a 150 MB transcript must not be parsed inside a hook timeout.
 function readTail(file) {
@@ -126,7 +160,51 @@ function userTurnText(rec) {
   return text;
 }
 
-function isTaskOpening(rec) {
+// A brief another session sent: the journal holds a cross-session message as an `isMeta` user
+// record, which userTurnText rejects — so without this the worker's whole job was glued onto
+// whatever prompt came before it, and judged against that. Only a message whose BODY opens with
+// the marker is a brief: a hand-back that quotes one further down opens nothing.
+// Two shapes carry one: an idle session gets an `isMeta` user record; a session busy mid-turn
+// gets an `attachment` of type `queued_command` with the text in `attachment.prompt`.
+function briefText(rec) {
+  if (!rec) return null;
+  let text;
+  if (rec.type === "user" && rec.isMeta && rec.message) {
+    const c = rec.message.content;
+    text = typeof c === "string" ? c : textOf(Array.isArray(c) ? c : []);
+  } else if (rec.type === "attachment" && rec.attachment && rec.attachment.type === "queued_command") {
+    const p = rec.attachment.prompt;
+    text = typeof p === "string" ? p : textOf(Array.isArray(p) ? p : []);
+  } else {
+    return null;
+  }
+  const m = text.match(/<cross-session-message\b[^>]*>([\s\S]*)/);
+  return m && isBrief(m[1]) ? m[1].replace(/<\/cross-session-message>[\s\S]*$/, "").trim() : null;
+}
+
+// The prompt a subagent was launched with: the root record of its own journal.
+function sidechainRootText(rec) {
+  if (!rec || rec.type !== "user" || !rec.isSidechain || rec.parentUuid !== null || !rec.message) return null;
+  const c = rec.message.content;
+  const text = typeof c === "string" ? c : textOf(Array.isArray(c) ? c : []);
+  return text.trim() ? text : null;
+}
+
+// The text of a record that opens a task, or null. `opts.subagent` admits a worker journal's root
+// prompt; it is never set for a session's own journal, where an old sidechain record must not cut
+// a task in two.
+function openingText(rec, opts) {
+  if (plainOpening(rec)) return userTurnText(rec);
+  const brief = briefText(rec);
+  if (brief !== null) return brief;
+  return opts && opts.subagent ? sidechainRootText(rec) : null;
+}
+
+function isTaskOpening(rec, opts) {
+  return openingText(rec, opts) !== null;
+}
+
+function plainOpening(rec) {
   const text = userTurnText(rec);
   if (text === null) return false;
   const t = text.trim();
@@ -170,8 +248,9 @@ function parseTranscript(file) {
   }
   let start = 0;
   let found = false;
+  const subagent = SUBAGENT_FILE_RE.test(String(file));
   for (let i = recs.length - 1; i >= 0; i--) {
-    if (isTaskOpening(recs[i])) {
+    if (isTaskOpening(recs[i], { subagent })) {
       start = i;
       found = true;
       break;
@@ -184,6 +263,7 @@ function parseTranscript(file) {
     preamble: sessionPreamble(recs, start), // session-start hook output, outside every window
     all: recs, // the whole tail: a late agent answer is paired against the task BEFORE this one
     start,
+    subagent, // a worker's journal: buildDigest takes its root prompt as the task's
     total: recs.length,
     truncated: tail.truncated,
     windowComplete: found && !tail.unusable,
@@ -221,4 +301,4 @@ function textOf(content) {
     .join("\n");
 }
 
-module.exports = { findTranscript, sessionIdOf, userTurnText, isTaskOpening, sessionPreamble, parseTranscript, textOf, isAgentCall, notificationText, NOTIFY_ID_RE };
+module.exports = { findTranscript, sessionIdOf, userTurnText, isTaskOpening, openingText, isBrief, sessionPreamble, parseTranscript, textOf, isAgentCall, notificationText, NOTIFY_ID_RE };

@@ -60,7 +60,7 @@ const PULL_RE = /\bgit\s+(?:pull|rebase|merge|fetch)\b(?![^\n;&|]*--abort)/;
 // hand, and the shapes of "shipping" that must not come before it — a push, a merge on the forge,
 // a release created or uploaded. A build is judged by BUILD_RE like the leak gate.
 const RELEASE_ACK_RE = /leak-check\.js"?\s+ack-release\b/;
-const SHIP_RE = /\bgit\s+push\b|\bgh\s+(?:pr\s+merge|release\s+(?:create|upload|edit))\b/;
+const SHIP_RE = /\bgit\s+(?:-C\s+(?:"[^"]*"|'[^']*'|\S+)\s+)?push\b|\bgh\s+(?:pr\s+merge|release\s+(?:create|upload|edit))\b/;
 
 // Which agents are review angles and which are support: the checker counts the former as a
 // fired angle, the ledger scores them; a support agent (a per-finding filter, the delta pass)
