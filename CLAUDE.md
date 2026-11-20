@@ -158,7 +158,12 @@ name real parts. A part that needs another part's result is not a part; it goes 
 over the integration · drive the combined flow` as its §0 line, then:
 
 1. **Integration branch** `orch/<topic>` from fresh `origin/main`; per part a worktree I create
-   myself — `git worktree add <dir> -b orch/<topic>--<part> orch/<topic>` — its own build tree.
+   myself — `git worktree add <dir> -b orch/<topic>--<part> orch/<topic>` — its own build tree,
+   seeded before its first build: `node "{{CLAUDE_HOME}}\pipeline\seed-target.js" <main
+   checkout> <dir>` (compiled third-party crates are copied; every workspace member is rebuilt
+   from the part's own sources; it refuses while a build runs in either tree). **Never one target
+   or build dir for two worktrees**: cargo names a workspace member by its repo-relative path, so
+   one part silently links another part's crate.
 2. **At most 4 workers** per orchestration, a fifth part waits for a second round. Each launched
    with an **explicit `model`**, picked per part and said in the §0 line: `opus` — a feature, a
    bug, perf, or anything on §0's untouchable list (persisted state, frame loop, wire, money);

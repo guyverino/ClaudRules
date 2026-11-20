@@ -58,6 +58,7 @@
     "pipeline/no-poll.js",
     "pipeline/plugin-watch.js",
     "pipeline/reply-lang.js",
+    "pipeline/seed-target.js",
     "pipeline/stats.js",
     "pipeline/test.js",
     "pipeline/tested-tree.js",
