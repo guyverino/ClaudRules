@@ -58,6 +58,8 @@ Rules for the chapters (videos 12–15):
 - **A wait on several coins** uses `next_chart` with `wheel_next` equal to the notches the scenario
   turned before it (a next coin opens at its own zoom); the price scale is reset to «Авто» on each
   next coin by the director; a geometry wait stops by itself when the coins run out.
+- **A settings chapter is filmed closer** (wheel about −3) than a comparison: six notches out squeezed
+  a coin's price scale into a thin band and no change could be seen (video 16).
 - **A change shown on screen must leave something on the chart.** Compare frames before and after
   each change; a change that left nothing is cut from the take (below), not narrated around.
 - **Events only where the frame shows them**, explained by the terminal's rule (guide §10). A
@@ -99,19 +101,25 @@ matter (the found line, the card, before/after each change) before writing a wor
 1. Write `narration.json` in the take folder: `{"<step>": "text"}`, and the same file as
    `scenarios/<NN>/<k>-<name>.narration.json`. Each line goes on the FIRST step of what it describes,
    never on the wait after it. Only what the frames show; numbers from the card, not from memory.
+   A card near the plot's bottom edge is cut off: name only the fields the frame shows. A chapter
+   whose market event never came (no coin had it in the wait) is dropped and said so in the hand-over.
 2. A take's own `scenario.json` may be edited after the fact: `"edit": "cut"` on the steps of a
    change that left nothing, or of a routine closing click (the palette), `"edit": "fast"` on routine
    clicks. `sync.py` and `assemble.py` read the take's copy.
 3. `python -I private/film/edit/fit_waits.py <take> <chapter.json>` lengthens the waits; reshoot
    ONLY the studio-only chapter (the one that builds rows) with the fitted waits and copy its
    narration over. Market chapters are not reshot: their lines describe what that take showed.
+   Never regenerate a chapter's JSON after fit_waits: it drops the fitted waits, and a changed
+   scenario shifts the step numbers the narration is keyed to — reshoot, move the lines to the new
+   numbers, fit again, reshoot (video 16).
 4. After the voice: `python private/film/edit/sync.py <take> …`. Every silence of 2.5 s or more gets
    a short line on the first step of what runs there (one line per routine stretch, not a remark per
    click), every line is read against what starts under it.
 5. The rules that bit (guide §10, kept there): no repeats across a chapter seam; no explaining the
    director's choices («на Байбите поджим редкий»); no narrating UI closing («палитру закроем»); no
    references back to a preset («как в готовой строчке»); UI abbreviations in words («совпадение
-   таймфреймов»); «строчку», «дельта», «отодвинем».
+   таймфреймов»); «строчку», «дельта», «отодвинем»; never «уже» (the voice confuses «уже» and
+   «ужЕ» — say «меньше», «теснее», «к этому моменту»).
 
 ## 5. Voice
 
