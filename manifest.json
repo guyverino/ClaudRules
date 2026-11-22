@@ -84,6 +84,7 @@
     "pipeline/tests/testedtree.test.js",
     "pipeline/tests/understanding.test.js",
     "project-skills/moon-terminal/publish/SKILL.md",
-    "project-skills/moon-terminal/tutorial-video/SKILL.md"
+    "project-skills/moon-terminal/tutorial-video/SKILL.md",
+    "project-skills/moon-terminal/youtube-video/SKILL.md"
   ]
 }
