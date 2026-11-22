@@ -66,8 +66,9 @@ Rules for the chapters (videos 12–15):
   (reset, order, stop, close, cancel…) can be hovered with `move`, never pressed; close the
   auto-figure popup by clicking its button again, the row editor by `afe-ok`.
 - `fill` changes a number field or a colour picker's hex field (six lowercase hex digits,
-  `fill afe-color-pick-*:hex f5c542`), reads it back, and for a colour also reads the picker's
-  trigger; a value that did not land is retyped up to three times, then the take stops.
+  `fill afe-color-pick-*:hex f5c542`) and reads it back. A colour fill ends by closing the picker
+  with its trigger (that is the commit — no separate close step after it) and is judged by the
+  colour the trigger shows; a value that did not land is retyped up to three times, then the take stops.
 - Nothing on screen names or numbers chapters: their order in a video may change.
 
 ## 2. Build the director when the overlay changed
@@ -86,7 +87,7 @@ and the monitor awake: the capture records the screen region, not the window (a 
 it spoiled a take), and a sleeping display gives no frames at all.
 
 ```powershell
-powershell -File private\film\edit\shoot.ps1 -Video <NN>-<slug> -Chapters 01-build-rows,02-…   # in the background
+& 'private\film\edit\shoot.ps1' -Video <NN>-<slug> -Chapters '01-build-rows','02-…'   # in the background; not via -File
 ```
 It runs the chapters one after another and prints `дубль снят` or why each stopped. Then per take:
 `python -I private/film/edit/steps.py <take>` (step, start, length, action, mark, journal note) —
