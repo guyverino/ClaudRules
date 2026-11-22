@@ -61,6 +61,12 @@ Rules for the chapters (videos 12–15):
 - **A wait on several coins** uses `next_chart` with `wheel_next` equal to the notches the scenario
   turned before it (a next coin opens at its own zoom); the price scale is reset to «Авто» on each
   next coin by the director; a geometry wait stops by itself when the coins run out.
+- **Several kinds of one family (formations) are searched one kind per chapter**, the other rows
+  hidden, `wait_line` with that row's title; a kind not found in the wait drops its chapter (video 18:
+  channel, wedge and double top found, no flag).
+- **Only the row being explained is on screen** (the developer, 22.11, video 18): before a line, a card or
+  a setting is talked about, every other row is hidden by its eye (cut steps); a frame with all rows
+  on is for the comparison only.
 - **A settings chapter is filmed closer** (wheel about −3) than a comparison: six notches out squeezed
   a coin's price scale into a thin band and no change could be seen (video 16).
 - **A change shown on screen must leave something on the chart.** Compare frames before and after
