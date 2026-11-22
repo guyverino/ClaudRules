@@ -43,6 +43,9 @@ files by name and push them to its `main` as part of the task (memory `overlay-c
    (`private/harvest/out/scenes-controls.json`), `DIRECTOR_NOTES.md`, or the editor's code
    (`panels/auto_figure_edit/fields.rs` → `afe-num-<Field>`); a control the atlas lacks is proved
    by the first take.
+5. A row made from a preset renames itself only when its name names a parameter (period,
+   timeframe); turning parts off (POC/VAH/VAL) keeps the old name — type a name then («Голые POC»,
+   video 17). A preset the Add menu does not offer is made from the nearest one this way.
 
 Rules for the chapters (videos 12–15):
 - **Rows to compare fit one frame.** The wheel zooms about ×2 per notch: a coin opens about an hour
