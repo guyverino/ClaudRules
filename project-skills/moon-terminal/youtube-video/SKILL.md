@@ -129,6 +129,10 @@ matter (the found line, the card, before/after each change) before writing a wor
    references back to a preset («как в готовой строчке»); UI abbreviations in words («совпадение
    таймфреймов»); «строчку», «дельта», «отодвинем»; never «уже» (the voice confuses «уже» and
    «ужЕ» — say «меньше», «теснее», «к этому моменту»).
+   Never list which row is which colour («треугольники — жёлтые, каналы — синие») or walk the
+   pointer over the rows to say it: the colours are on screen (video 18) — cut such a hover segment.
+   Say a procedure once per video, never again in each chapter («остальные строчки выключены» was
+   said in three chapters of video 18): what the viewer sees needs no restating.
 
 ## 5. Voice
 
