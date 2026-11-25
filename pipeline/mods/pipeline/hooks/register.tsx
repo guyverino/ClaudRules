@@ -13,7 +13,8 @@
  *   - prompt.submit: the small model's §0 class for a typed prompt, attached as
  *     a hint for the model and shown in the band
  *   - agent.spawn: refuses a review agent whose prompt carries no diff (§6) and
- *     a second fix-diff in one task (§9) before they start, where gate-check
+ *     a second fix-diff in one agent loop's task (§9; each orchestrated worker
+ *     has its own) before they start, where gate-check
  *     could only report them after the turn; the band lists this task's
  *     review agents
  *
@@ -53,8 +54,16 @@ const moved = atom({ plugin: 'pipeline', key: 'moved' } as const, [] as Pipeline
 // $.state: a dispatch reads state as it stood when it began, so two fix-diff
 // spawns in one response would both read 0 and both start. A spawn takes its
 // slot before `next(e)` and gives it back only if the engine refused it.
-let fixDiffRuns = 0
+//
+// fix-diff is counted per agent loop (`parentAgentId`, absent from main): an
+// orchestrated worker runs its own task in this same process, so one shared
+// count let the first worker to reach §9 take every other worker's slot.
+const MAIN_LOOP = 'main'
+const fixDiffRuns = new Map<string, number>()
 let taskAgents: string[] = []
+
+/** The loop a spawn happens in: the subagent's id, or main's key. */
+const loopOf = (parentAgentId: string | undefined) => parentAgentId ?? MAIN_LOOP
 
 // The classifier must not hold a prompt up: past this the prompt goes in without a hint.
 const CLASSIFY_TIMEOUT_MS = 3_000
@@ -105,7 +114,9 @@ export const register: Register = (on, options) => {
       whole.push(saved === undefined ? entry : ((await $.fs.read(saved).catch(() => undefined)) ?? entry))
     }
     await update($, band, () => ({ ...EMPTY, alarms: alarmLines(whole) }))
-    fixDiffRuns = 0
+    // Main's conversation starts over (startup, /clear, compaction, resume);
+    // a worker running in the background keeps its own task and its slot.
+    fixDiffRuns.delete(MAIN_LOOP)
     taskAgents = []
     // Whatever an earlier conversation of this process carried is not this one's.
     await update($, moved, () => [])
@@ -152,9 +163,13 @@ export const register: Register = (on, options) => {
     if (e.origin.kind === 'composer' || e.origin.kind === 'bridge' || e.origin.kind === 'sdk') {
       await update($, band, b => ({ ...b, alarms: [], warns: [], report: '', hint: '' }))
     }
-    // A new task: its agents and its one fix-diff are counted afresh.
+    // A new task of main (a typed prompt, or a brief to a worker session):
+    // its agents and its one fix-diff are counted afresh. A worker subagent's
+    // slot is its own task's and stays: a prompt here opens nothing inside it,
+    // and a WARN sent back to a worker continues the task it already has
+    // (§9: that fix is built and read, not re-run).
     if (opensTask(e.text, e.origin.kind)) {
-      fixDiffRuns = 0
+      fixDiffRuns.delete(MAIN_LOOP)
       taskAgents = []
       await update($, band, b => ({ ...b, agents: [] }))
     }
@@ -171,16 +186,18 @@ export const register: Register = (on, options) => {
   on('agent.spawn', async ($, e, next) => {
     const type = e.subagentType
     if (!REVIEW_AGENTS.has(type)) return next(e)
-    const denied = spawnDenial(type, e.prompt, fixDiffRuns)
+    const loop = loopOf(e.parentAgentId)
+    const runs = fixDiffRuns.get(loop) ?? 0
+    const denied = spawnDenial(type, e.prompt, runs)
     if (denied) {
       taskAgents = [...taskAgents, `✖${type}`]
       await update($, band, b => ({ ...b, agents: taskAgents }))
       return { deny: denied }
     }
-    if (type === 'fix-diff') fixDiffRuns += 1
+    if (type === 'fix-diff') fixDiffRuns.set(loop, runs + 1)
     // The slot goes back when the spawn did not happen: refused or failed.
     const giveBack = () => {
-      if (type === 'fix-diff') fixDiffRuns -= 1
+      if (type === 'fix-diff') fixDiffRuns.set(loop, (fixDiffRuns.get(loop) ?? 1) - 1)
     }
     const r = await next(e).catch(err => {
       giveBack()

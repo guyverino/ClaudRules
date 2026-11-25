@@ -82,6 +82,70 @@ Rules for the chapters (videos 12–15):
   colour the trigger shows; a value that did not land is retyped up to three times, then the take stops.
 - Nothing on screen names or numbers chapters: their order in a video may change.
 
+Rules from 22–23.11 (videos 9, 11, 12, 21, 22):
+- **A video about one settings window covers EVERY field of it**, each changed with a visible
+  result and put back; more than 3–5 minutes → one video per window (mini-series 11.1 «Свечи и
+  трейды», 11.2 «Графика чарта», 11.3 «Объёмы», 11.4 «Подписи и раскладка»). Fields whose effect the
+  frame cannot show (no orders on the coin, a mode that needs volumes off) are hovered and named,
+  never narrated as if seen.
+- **Clean frame, prepared off screen**: a window video runs on the studio baseline `display`
+  (auto figures off), never with an on-screen step turning things off. What the voice explains must
+  be in the frame: the crosshair and its captions need the `hover` step (a still pointer shows none).
+- **Segment cells are not stretched over their row**: `part [i, n]` divides the row's whole rect.
+  Before shooting a window, run a probe take (`move` to every control; the journal's `focus` gives
+  each rect, a frame shows the cell labels) and compute the parts («Толщина контура» = `[0..2, 9]`).
+  Menu item indices are found the same way (screener «Все ядра»: groups first, BB1 = 7).
+- **Chapter seams go straight to the subject**: a later chapter's preparation (coin reopened,
+  window opened) is `cut`, the transition line sits on the first visible step; `assemble.py` then
+  cuts the empty start screen before a cut first step too.
+- **`drag_set`** drags the nth chart of the active set/comparison tab (the leader pulls the others —
+  video 10), same checks as `drag`, plain only. **`drag_tab`** moves a dock tab onto another by their
+  drawn labels and verifies the move (video 2).
+- **`drag`** pans only on pause («Live» → pause first; in Live a drag waits for a flick), and only
+  on a coin with no live core orders (bot coins carry entries — use BTC by the search); press point
+  in the tile middle (x 0.25–0.60, y 0.30–0.75). Ctrl drag = drawing (needs drawing mode, refuses an
+  armed-alert figure on the chart).
+- **Never pressed, by design**: anything named `apply` («применить к вкладкам» — hover and say it),
+  a blacklist item (writes to the core — hover), a figure's alert (core command: video 20 waits for a
+  decision on a core-write step).
+- Voice pitfalls, all forms: «строчка» never «строка»; no plural «свечи» («свечей», «тела свечей»,
+  «окно свечей и трейдов»); MoonShot → «Мун Шот», Moonbot → «Мунбот» (Cyrillic in narration); no «стоит» («держит»). No stock line repeated video
+  to video («каждая монета ложится на Main…»); a sort is explained by its rule; end simply, no «Ну вот:
+  … — всё в окне …».
+- Screener: column menu and «Все ядра» close only by a click outside (`scr-coin`); Listed is empty for
+  a minute after the cores connect; `scr-af-pct` shows a placeholder `fill` mistakes for content
+  (click + type). Details: `DIRECTOR_NOTES.md`.
+- **A change must differ from the current state enough to see**: set a value far from what the frame
+  already shows («Ширина Fit 500» when the charts were ~480 wide showed nothing — 300 did), and a
+  field that only acts together with another is shown together (layout «Рядов» needs «Точно»).
+- **Check the data a window draws before filming it**: on BTC one 1.5 t$ volume bar flattened the
+  whole volume band (23.11, reported); a window covering the right part hides the freshest data —
+  pick a coin whose effect shows left of the window.
+- Draft narration from the steps' `about` (they are written as spoken lines), then fix each line
+  against the frames.
+- **A click back to the starting value is silent** (23.11, 11.x): never «Вернём…», «как было»,
+  «обратно». Generators use `back()` → `"quiet": true` (the line before ends there, not over the
+  click) and a ~1.2 s hold; in an already-shot take mark the click `quiet` and its wait `"keep_s": 0.6`
+  (assemble cuts the rest). The line before ends with a full stop, not a dangling comma.
+- **A change hidden under the settings window is shown with the window closed**: pick the value,
+  close the popup, hold, reopen (cut). Read in the code WHAT a field moves before filming it
+  (11.3 «Подписи» moves the Cancel Buy / Panic Sell buttons, under the popup — not the scale).
+- «Скрыть подписи окна» and similar: the voice reads «Окна» for «окнА» — describe, do not quote.
+  No sentence opening on «Все …» («Все три отмечены» came out badly stressed) — «Три монеты отмечены».
+- **A core write is undone by the very next press** (24.11): a take that armed a figure alert and
+  stopped on a later step left the alert on the core while the studio forgot the figure. Arm, then
+  disarm at once; hovers and the rest come after. Press the exact `al-arm-<core>-<id>`.
+- **Not BTC** (the developer, 24.11): its search and charts drown in quarterly contracts. Lessons run on SOL
+  (on all three studio exchanges); XRP/NEAR as extra coins.
+- Menus with groups count their separators as items (`:menu:item:N`): the labels zone menu is
+  0 Чарт верх · 1 Чарт низ · 2 separator · 3 Стакан верх · 4 Стакан низ (11.5 picked 3 and the module
+  went to the top). Check a dropdown's frame in the first take before trusting an index; a
+  checkbox's state too (the prefix tick was already off — a press turned it on).
+- A tick whose effect needs data the studio does not have (order-line captions, no orders on the
+  studio coins) is hovered and described, never pressed: a click that changes nothing is noise.
+- This file is updated in the same turn whenever a take teaches something new (the developer,
+  23.11).
+
 ## 2. Build the director when the overlay changed
 
 ```powershell
@@ -156,6 +220,11 @@ video (it audibly restarts every ~2 min); the developer keeps it — never regen
 Check before handing over: frames across the video (nothing foreign over the terminal), the cut
 segments really gone, loudness (`volumedetect`).
 
+Thumbnail, for every video: `python edit/thumb.py --title "1–3 слова" --subtitle "остальное"
+--out <video folder>` → `thumb.jpg` (1280x720, ≤ 2 MB) and `thumb-telegram.png` (the preview check)
+there. The style, the font and the size rule are in §8. Look at both before handing over. The channel's
+watermark (the mark, bottom-right, whole video) is already set on the channel — nothing per video.
+
 ## 7. Hand over
 
 The LAST message carries everything: the links (full paths to `video.mp4` and `video.srt`, no
@@ -163,8 +232,94 @@ upload unless they ask), what the video shows, what you decided alone, what you 
 why, and any question — never "see above". Push the overlay, record decisions and take folders in
 memory `youtube-video-plan.md`, the developer's new notes in `youtube-video-review-rules.md` and guide §10.
 
+## 8. YouTube: thumbnail, meta, private upload (when they say the video is ready)
+
+Only on their word («готов для выкладки», «выкладывай»). Everything for one video lives in its
+folder `<studio>\video\<NN>-<slug>\`, next to `video.mp4` / `video.srt`:
+
+1. **Thumbnail** — `thumb.jpg`, one per video (the developer 24.11: «к каждому ролику в папку»):
+   ```powershell
+   Set-Location <repo>\private\film\edit
+   python thumb.py --title "Экран терминала" --subtitle "режимы, шапка, ядро и панели" --out <studio>\video\<NN>-<slug>
+   ```
+   (no `-I`: PIL is in the user site-packages). Style chosen 24.11 by the developer (replaces the yellow
+   caps «B»): his reference picture as the background (`<studio>\voice\brand\thumb-background.jpg`, its
+   baked-in text removed), small logo top-left, the title **bottom-left** in **Montserrat SemiBold**
+   (`<studio>\voice\brand\fonts\montserrat`, OFL), sentence case, warm white; subtitle Montserrat
+   Regular; a short blue rule. **The title is 1–3 words at ONE size, 88 px** (the size «Автофигуры» got;
+   the developer 24.11) — the rest of the name goes into the subtitle in small type («Скринер» + «уровни по
+   всем монетам»); 4+ words are refused. A title line at the height of the play button Telegram draws
+   over a link preview ends left of it (≈7 letters), lines below may be `COLUMN` wide (840 px) — so a
+   two-word title sits on one line when the subtitle is one line (a 2-line subtitle lifts the title to
+   the button's height), and a longer one becomes one word + subtitle («Арбитраж» + «и сравнение монеты
+   на разных биржах», «Раскладка», «Рисование»). The titles of every assembled video (24.11) are in
+   their folders' `thumb.jpg`; take the same wording when uploading.
+   Writes `thumb.jpg` and `thumb-telegram.png` (the preview check) — look at both before uploading.
+   No frame from the video, no lesson number.
+2. **`meta.json`** — the README's flat format: title with the keywords («Экран терминала MoonTerminal:
+   …»), description whose first lines carry the keywords, then the chapters, then «в отдельных
+   роликах» pointers and the site `https://moonterminal.pro`; 20–25 tags (below), `category_id` 27,
+   `default_language`/`default_audio_language` ru, `privacy` private, `made_for_kids` false.
+   **Chapters** = the parts of `parts.txt` joined end to end: the intro card belongs to the first
+   chapter, so it starts at `0:00`; each next one at the sum of the durations before it
+   (`ffmpeg -i <part>` → Duration). At least 3, each ≥ 10 s. Names say what the chapter shows, not
+   a number. Nothing in the description the video does not show.
+   **Moonbot ↔ MoonTerminal link** (the developer 24.11, advice they got: «тегов больше, чтобы YouTube понимал
+   связку»): the title says «… MoonTerminal для Moonbot: …»; the first line «MoonTerminal — торговый терминал
+   для Moonbot: …» — no «(Мунбот, MoonBot)» asides, never «MoonBot» with a capital B (the developer 24.11:
+   «не надо 500 раз повторять»); Moonbot 2–3 times in the whole description; links «Сайт MoonTerminal: https://moonterminal.pro» and «Сайт Moonbot: https://moonbot.pro и
+   https://moonbot.eu» (both Moonbot sites, the developer 24.11); `#MoonTerminal #Moonbot`
+   last (the first three hashtags show above the title). Tags 20–25, up to ~450 of 500 chars:
+   the fixed core (MoonTerminal, Moonbot, Мунбот, Moon Bot, мун бот, MoonTerminal Moonbot,
+   терминал для Moonbot, терминал для Мунбота, Moonbot терминал, Moonbot terminal, Мунбот терминал,
+   Moonbot обучение, Мунбот обучение, торговый терминал, криптотерминал, торговый бот, криптобот)
+   plus the video's own subject and the exchanges in frame. An `en` localization of title and
+   description (Moonbot terminal in English search). Video 2's `meta.json` is the template. YouTube
+   returns the OLD tags for a minute after an update — read back again before calling it failed.
+3. **Upload, private** (the developer 24.11: «скрытым пока», «в черновик»):
+   ```powershell
+   Set-Location <repo>\private\film\youtube
+   python yt.py status                      # the token must resolve to MoonTerminal UCQvRLYAOQUoxY1qqz47Awog
+   python yt.py upload <folder>\video.mp4 --meta <folder>\meta.json --thumbnail <folder>\thumb.jpg --captions <folder>\video.srt --captions-lang ru
+   ```
+   The video id prints first; a failed thumbnail/captions step exits 2 and is redone alone
+   (`yt.py thumbnail <id> thumb.jpg`, `yt.py captions upload <id> video.srt --lang ru`). Thumbnails
+   need a phone-verified channel (youtube.com/verify). Right after an upload YouTube may answer 403
+   «can't be set for the specified video» (still processing): retry that one alone a few minutes
+   later. Thumbnails have their own rate limit (429 uploadRateLimitExceeded after ~a dozen in a day,
+   24.11): never re-set a thumbnail that took, retry only the failed ones, and record each video's
+   `thumbnail` state in its `youtube.json` (set | pending). Write the id into the folder as
+   `youtube.json` (`{"id": …, "url": "https://youtu.be/<id>", "privacy": "private", "uploaded": <date>}`)
+   and into memory `youtube-video-plan.md`; a re-cut of an uploaded video is a new upload — ask
+   whether to replace (delete) the old one.
+4. **Public** is their separate word: `python yt.py video publish <id>` (or `--at <ISO time>`).
+   **Playlists = the SERIES.md sections, one each, no common one** (the developer 24.11): «Старт» (А)
+   `PLEs0_06edco8`; «График» (Б), «Автофигуры» (В), «Поиск монет» (Г), «Стратегии и результат» (Д),
+   «Торговля и удалённо» (Е) are created private (`yt.py playlist create --title … --privacy private
+   --lang ru`) when their first video is uploaded, and their ids written here. Upload with
+   `--playlist <id>` or `yt.py playlist add <id> <video>`. Chapters in the description are what
+   YouTube turns into the clickable segments on the progress bar.
+
+The channel is bound once by `connect.cmd` (README there); secrets live only in Windows Credential
+Manager — never write the client JSON or a token into the repo, the studio or a log. The bound
+channel `MoonTerminal` (UCQvRLYAOQUoxY1qqz47Awog) is the **Russian** channel. Ask before the first
+English upload: English may get its own channel, and videos cannot be moved between channels
+afterwards. Watermark and channel links are set by hand in Studio (the API's watermark call answers
+204 and does nothing). Quota: 100 uploads/day per project.
+
 ## Gotchas
 
+- The «Отчёт» panel is on screen in most takes: ALWAYS make its total positive (the developer, 24.11) — cut
+  steps at the take's start switch its period to a green day (`rep-period:trigger` →
+  `rep-period:menu:item:1` «Вчера»; other days if that one is red), and check it in the frames.
+  Lessons film on studio baseline `clean` (no auto figures, arbitrage, strategy-filter captions).
+- Another session's terminal window over the capture region spoils a take (24.11: a neighbour's
+  `--fixture` bench opened over video 11.4 twice). Before a take, `Get-CimInstance Win32_Process
+  -Filter "Name='moonterminal.exe'"`; while a take runs, ask the busy moon-terminal sessions
+  (ListAgents → SendMessage) not to open terminal windows. Check every take's frames for it.
+- The layout window's divider («Колонок»/«Рядов») without «Точно» is the SMALLEST count that keeps a
+  chart at «Мин. высота/ширина» — on a short Main, «2» alone already splits four charts; show the
+  difference with a count above what is needed (11.4: «3» gives two, «Точно» three).
 - Bash heredocs with quotes break in this shell: write Python patches/scripts to files (Write
   tool) and run them.
 - ffmpeg is imageio-ffmpeg's; `voice.ffmpeg()` finds it even under `python -I`.

@@ -190,12 +190,13 @@ export const carriesDiff = (prompt: string) => DIFF_RE.test(prompt)
  *     shell to run `git diff` itself (§6);
  *   - fix-diff runs once per task (§9): a second run re-hunts its own fixes.
  *
- * `fixDiffRuns` is how many fix-diff spawns this task already let through.
+ * `fixDiffRuns` is how many fix-diff spawns the spawning loop's task already
+ * let through — main's, or one orchestrated worker's, never a shared count.
  */
 export function spawnDenial(type: string, prompt: string, fixDiffRuns: number): string | undefined {
   if (!REVIEW_AGENTS.has(type)) return undefined
   if (type === 'fix-diff' && fixDiffRuns > 0) {
-    return `pipeline mod: fix-diff already ran in this task — §9 runs it once. A confirmed high is fixed, built and read by you, never re-run. A new typed prompt starts a new task.`
+    return `pipeline mod: fix-diff already ran in this agent's task — §9 runs it once. A confirmed high is fixed, built and read by you, never re-run. The next task gets its own run: a new typed prompt, a new [orchestrator-brief], or a fresh worker agent; a WARN sent back to a worker continues its task.`
   }
   if (!carriesDiff(prompt)) {
     return `pipeline mod: ${type} has no shell, and its prompt carries no diff (no \`diff --git\` / \`@@\` hunk, no .diff/.patch file to Read). Paste the unified diff into the prompt, or save it to a .diff file and name the path (§6).`
@@ -203,8 +204,24 @@ export function spawnDenial(type: string, prompt: string, fixDiffRuns: number): 
   return undefined
 }
 
-/** Whether a typed prompt opens a new task, by gate-check's rule (lib/transcript.js isTaskOpening). */
+// Another session's delivery: a worker session's brief arrives through one of these.
+const DELIVERY_ORIGINS: ReadonlySet<string> = new Set(['peer', 'peer-send-message', 'coordinator'])
+// The orchestrator's brief marker, inside the cross-session frame when there is one
+// (lib/transcript.js briefText / isBrief read it the same way).
+const CROSS_SESSION_RE = /<cross-session-message\b[^>]*>([\s\S]*)/
+const BRIEF_MARK_RE = /^\s*\[orchestrator-brief\]/
+
+/**
+ * Whether a prompt opens a new task, by gate-check's rule (lib/transcript.js
+ * isTaskOpening): a typed prompt that is not a slash command, or another
+ * session's delivery that is an orchestrator brief — a worker session's task
+ * starts there, and any other delivery (a WARN sent back) continues one.
+ */
 export function opensTask(text: string, originKind: string): boolean {
+  if (DELIVERY_ORIGINS.has(originKind)) {
+    const framed = text.match(CROSS_SESSION_RE)
+    return BRIEF_MARK_RE.test(framed ? (framed[1] ?? '') : text)
+  }
   if (originKind !== 'composer' && originKind !== 'bridge' && originKind !== 'sdk') return false
   const t = text.trim()
   return t !== '' && !t.startsWith('/')

@@ -57,6 +57,66 @@ describe('register', () => {
     expect(started).toEqual(['flow', 'fix-diff', 'Explore', 'fix-diff'])
   })
 
+  test('orchestrated workers each get their own fix-diff; a second one inside a worker is refused', async ($, on) => {
+    const started: string[] = []
+    on('agent.spawn', ($, e) => {
+      started.push(`${e.parentAgentId ?? 'main'}:${e.subagentType ?? ''}`)
+      return { model: 'sonnet' }
+    })
+    on('model.classify', () => ({ value: undefined }))
+    on('prompt.submit', ($, e) => ({ text: e.text }))
+    on('classic.SessionStart', () => ({ additionalContext: [] }))
+    mock.clock(on)
+    const diff = 'diff --git a/src/x.rs b/src/x.rs\n@@ -1 +1 @@'
+    // A worker's own spawns happen in its loop: the engine names it as parentAgentId.
+    const spawn = (subagentType: string, parentAgentId?: string) =>
+      $.agent.spawn({ subagentType, prompt: diff, parentAgentId } as never)
+    await $.prompt.submit({ text: 'split the feature into two parts', origin: { kind: 'composer' } } as never)
+
+    await spawn('fix-diff', 'worker-a')
+    await spawn('fix-diff', 'worker-b')
+    const againA = await spawn('fix-diff', 'worker-a')
+    await spawn('fix-diff')
+    const againMain = await spawn('fix-diff')
+    // A typed prompt opens main's next task; a worker's one run belongs to its own task.
+    await $.prompt.submit({ text: 'next task: tidy the release notes', origin: { kind: 'composer' } } as never)
+    const afterPromptA = await spawn('fix-diff', 'worker-a')
+    await spawn('fix-diff')
+    // Main's compaction starts its conversation over; a background worker's task goes on.
+    await $.classic.SessionStart({ source: 'compact' } as never)
+    const afterCompactB = await spawn('fix-diff', 'worker-b')
+
+    expect('deny' in againA && againA.deny).toContain('once')
+    expect('deny' in againMain && againMain.deny).toContain('once')
+    expect('deny' in afterPromptA && afterPromptA.deny).toContain('once')
+    expect('deny' in afterCompactB && afterCompactB.deny).toContain('once')
+    expect(started).toEqual(['worker-a:fix-diff', 'worker-b:fix-diff', 'main:fix-diff', 'main:fix-diff'])
+  })
+
+  test('a worker session opens its task on the brief; a WARN sent back keeps its one fix-diff', async ($, on) => {
+    const started: string[] = []
+    on('agent.spawn', ($, e) => {
+      started.push(e.subagentType ?? '')
+      return { model: 'sonnet' }
+    })
+    on('model.classify', () => ({ value: undefined }))
+    on('prompt.submit', ($, e) => ({ text: e.text }))
+    mock.clock(on)
+    const diff = 'diff --git a/src/x.rs b/src/x.rs\n@@ -1 +1 @@'
+    const spawn = () => $.agent.spawn({ subagentType: 'fix-diff', prompt: diff } as never)
+    const deliver = (text: string) => $.prompt.submit({ text, origin: { kind: 'peer' } } as never)
+
+    await deliver('[orchestrator-brief] topic / part-a\ndeveloper said: "split it"')
+    await spawn()
+    await deliver('WARN s9 in your part: the build ran before the edit landed')
+    const afterWarn = await spawn()
+    await deliver('[orchestrator-brief] topic / part-c\ndeveloper said: "split it"')
+    await spawn()
+
+    expect('deny' in afterWarn && afterWarn.deny).toContain('once')
+    expect(started).toEqual(['fix-diff', 'fix-diff'])
+  })
+
   test('two fix-diff spawns in one response: exactly one starts', async ($, on) => {
     const started: string[] = []
     on('agent.spawn', ($, e) => {

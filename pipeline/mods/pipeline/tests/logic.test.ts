@@ -123,5 +123,11 @@ describe('logic', () => {
     expect(opensTask('/diag', 'composer')).toBe(false)
     expect(opensTask('<task-notification>done</task-notification>', 'task-notification')).toBe(false)
     expect(opensTask('  ', 'composer')).toBe(false)
+    // A worker session's task opens on the orchestrator's brief, framed or bare; a WARN sent back does not.
+    const brief = '[orchestrator-brief] topic / part-a\ndeveloper said: "split it"'
+    expect(opensTask(`<cross-session-message from="orch">\n${brief}\n</cross-session-message>`, 'peer')).toBe(true)
+    expect(opensTask(brief, 'peer-send-message')).toBe(true)
+    expect(opensTask('<cross-session-message from="orch">WARN s9 in your part, fix it</cross-session-message>', 'peer')).toBe(false)
+    expect(opensTask(`a hand-back quoting it:\n${brief}`, 'peer')).toBe(false)
   })
 })
