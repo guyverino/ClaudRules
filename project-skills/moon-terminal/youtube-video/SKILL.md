@@ -178,7 +178,14 @@ matter (the found line, the card, before/after each change) before writing a wor
    whose market event never came (no coin had it in the wait) is dropped and said so in the hand-over.
 2. A take's own `scenario.json` may be edited after the fact: `"edit": "cut"` on the steps of a
    change that left nothing, or of a routine closing click (the palette), `"edit": "fast"` on routine
-   clicks. `sync.py` and `assemble.py` read the take's copy.
+   clicks. `sync.py` and `assemble.py` read the take's copy. Never cut the typing of a coin search:
+   a coin appearing without it is a jump — say it («в поиске монет набираем SOL и жмём Enter») and
+   trim only the load after Enter with `keep_s` (the developer, 25.11).
+   A line about something the CHART draws (a label module, a line, a chart button) gets a frame
+   around it like a control's: the director journals no control there, so put it by hand in the
+   take's `marks.json` — `{"<step>": {"rect": [x, y, w, h], "from": "start"|"end", "until":
+   "click"|"next"}}` in take pixels, measured from a frame and checked on a frame drawn with
+   `preview.Overlay` — and copy it beside the scenario as `<k>-<name>.marks.json` (the developer, 25.11).
 3. `python -I private/film/edit/fit_waits.py <take> <chapter.json>` lengthens the waits; reshoot
    ONLY the studio-only chapter (the one that builds rows) with the fitted waits and copy its
    narration over. Market chapters are not reshot: their lines describe what that take showed.
