@@ -53,7 +53,8 @@ Rules for the chapters (videos 12–15):
   fastest is still readable in (video 14: 5m/8h, 15m/16h, 30m/24h, not 1h/40h). Sloped lines are
   compared drawn «Между касаниями» (first to last touch); events need «До правого края» again.
 - **Coins: the screener's calculation first** («Рассчитать» + the event filter), then the chart.
-  The routine pick (Type → Futures, volume `scr-dvol` 20M, `d24h` twice, Bybit `scr-mkt-1-`) is
+  The routine pick (Type → Futures, volume `scr-dvol` 20M as a `fill` — the field opens holding «1m»
+since #1492 and a plain `type` adds to it —, `d24h` twice, Bybit `scr-mkt-1-`) is
   narrated ONCE per video in one line and its clicks run `fast` (the generator does it). An event
   filter lists only coins with that event NOW («Поджим» = pressed squeezes only) and can be empty:
   then lower the volume to 3M (1M at most), or the routine pick with more coins. Squeezes: any venue
@@ -163,6 +164,9 @@ Rules from 22–23.11 (videos 9, 11, 12, 21, 22):
 
 ## 2. Build the director when the overlay changed
 
+Takes run on a terminal built from fresh `main` (the developer, 26.11: «скринер мог измениться» —
+#1492 had just changed the screener): pull, leak-review any foreign commit first, then build.
+
 ```powershell
 cargo build -p moon-ui-gpui --bin moonterminal --target x86_64-pc-windows-msvc --profile inspector --features ui-inspector
 ```
@@ -173,8 +177,10 @@ the targeted tests (`cargo test … -- film::`), clippy and one review agent bef
 ## 3. Takes
 
 Before the first take tell the developer, in the last message, to keep the LEFT part of the screen clear
-and the monitor awake: the capture records the screen region, not the window (a VS Code window over
-it spoiled a take), and a sleeping display gives no frames at all.
+and the monitor awake: the capture records the screen region, not the window, and a sleeping display
+gives no frames at all. A window brought over the frame anyway holds the director's steps until it
+is gone (5 min at most, then the take stops); the journal marks the stretch `covered` and the edit
+cuts it (26.11: Telegram and VS Code went out in video 15 before the director watched for them).
 
 ```powershell
 & 'private\film\edit\shoot.ps1' -Video <NN>-<slug> -Chapters '01-build-rows','02-…'   # in the background; not via -File
