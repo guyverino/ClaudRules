@@ -58,6 +58,11 @@ Rules for the chapters (videos 12–15):
   filter lists only coins with that event NOW («Поджим» = pressed squeezes only) and can be empty:
   then lower the volume to 3M (1M at most), or the routine pick with more coins. Squeezes: any venue
   (`scr-mkt-`). Stock perps and tickers like SNDK are never named aloud.
+- **Rows compared, then explained one by one** (video 13, 26.11): `wait_sets` with `card_px` (190 — the
+  Ctrl card hangs below the pointer and the chart clips it near the bottom) chooses one line per row apart
+  from the others; each row's own `wait_line` then takes `from_sets` and the same `card_px`, so the row is
+  explained on the very line the comparison proved apart (MOVE's medium and slow levels were one price).
+  Levels only — the scenario check refuses `from_sets` after a sloped `wait_sets`.
 - **A wait on several coins** uses `next_chart` with `wheel_next` equal to the notches the scenario
   turned before it (a next coin opens at its own zoom); the price scale is reset to «Авто» on each
   next coin by the director; a geometry wait stops by itself when the coins run out.
@@ -71,6 +76,16 @@ Rules for the chapters (videos 12–15):
   a coin's price scale into a thin band and no change could be seen (video 16).
 - **A change shown on screen must leave something on the chart.** Compare frames before and after
   each change; a change that left nothing is cut from the take (below), not narrated around.
+- **An event on a fast row is waited WITHOUT `widen` / `touches_visible`** (video 13, 26.11): the
+  widening turned the wheel twice more and set the price scale to 20/50 %, and the levels shrank into
+  a band. Wheel −1 at most, the chart's end, `card_px` 190. One `pick` per event, the very coin the
+  screener listed; if the filter lists nothing at 20M volume, 3M. A chapter whose second event never
+  came can be split: the events as separate scenarios (`04a-approach`), takes joined in `assemble.py`.
+- **A figure the narration explains is filmed big and part by part** (the developer, 26.11, video 15:
+  squeezes found by widening sat in one strip, «практически в одну строчку»). Never `widen` for it:
+  `wait_line` with `next_chart` and no `widen` (8 s per coin at the scenario's own view, wheel −2) and
+  `band_px` 110–130 for a squeeze. Then one `spot` step per part (`level`, `slope`, `zone`, `apex`), each
+  with its own line that fits the spot's `ms`: the edit draws a cyan mark on that part (`preview.py`).
 - **Events only where the frame shows them**, explained by the terminal's rule (guide §10). A
   squeeze BREAKOUT cannot be filmed: the figure leaves the chart on breakout (video 15).
 - Dropdowns: aim at `<id>:trigger`. Anything below a dialog's fold is unreachable. Banned names
@@ -192,14 +207,24 @@ matter (the found line, the card, before/after each change) before writing a wor
    Never regenerate a chapter's JSON after fit_waits: it drops the fitted waits, and a changed
    scenario shifts the step numbers the narration is keyed to — reshoot, move the lines to the new
    numbers, fit again, reshoot (video 16).
-4. After the voice: `python private/film/edit/sync.py <take> …`. Every silence of 2.5 s or more gets
-   a short line on the first step of what runs there (one line per routine stretch, not a remark per
-   click), every line is read against what starts under it.
+4. After the voice: `python private/film/edit/sync.py <take> …`. `assemble.py` itself starts a line
+   on a pointer step 0.8 s before the press (not at the glide's start) and cuts every plain wait down
+   to its line's end (keeping 0.5 s for what the action opened): a still frame with no voice is a
+   pause, and the developer asked «зачем там эти 2,5 с» (26.11). What stays silent is action — glides,
+   fast clicks; a silent stretch of 2 s or more still gets a short line on the first step of what
+   runs there (one line per routine stretch, not a remark per click), every line is read against
+   what starts under it.
 5. The rules that bit (guide §10, kept there): no repeats across a chapter seam; no explaining the
    director's choices («на Байбите поджим редкий»); no narrating UI closing («палитру закроем»); no
    references back to a preset («как в готовой строчке»); UI abbreviations in words («совпадение
    таймфреймов»); «строчку», «дельта», «отодвинем»; never «уже» (the voice confuses «уже» and
-   «ужЕ» — say «меньше», «теснее», «к этому моменту»).
+   «ужЕ» — say «меньше», «теснее», «к этому моменту»). The same for «стоят» (read «стОят») and
+   «стоит» (read «стОит»): «разнесены», «лежат», «находится» (video 13, 26.11). «Уровень держит»
+   sounds as if the level holds something — «уровень держится». A chapter never opens by repeating
+   the previous chapter's last line («найдём монету, где видны все три» → «нужна монета, где видны
+   все три», video 13): read the seam, cut the second one with its wait (`"edit": "cut"`).
+   One word is not repeated through a chapter's lines: «алерт» sounded in every line of the «Фигуры»
+   tab (video 19, 26.11) — name it once, then «галка», «линия», «такая карточка», «её звук».
    Never list which row is which colour («треугольники — жёлтые, каналы — синие») or walk the
    pointer over the rows to say it: the colours are on screen (video 18) — cut such a hover segment.
    Say a procedure once per video, never again in each chapter («остальные строчки выключены» was
@@ -219,7 +244,7 @@ Set-Location <studio>\film
 python <repo>\private\film\edit\assemble.py <take1> <take2> … --out <studio>\video\<NN>-<slug> --title "<video title>"
 ```
 (no `-I`: PIL and PyAV are in the user site-packages). ~0.4x the video's length. It cuts
-`wait_line` / `wait_sets` and `cut` steps, runs `fast` at ×4 with a badge, holds frames where a line
+`wait_line` / `wait_sets` / `wait_for` and `cut` steps, runs `fast` at ×4 with a badge, holds frames where a line
 is longer than its room, dissolves at cuts, adds the logo intro/outro and the series music, normalizes
 loudness to −16 LUFS and writes `video.srt`. The music is one 2-minute bed looped under the whole
 video (it audibly restarts every ~2 min); the developer keeps it — never regenerate it unless they ask.
