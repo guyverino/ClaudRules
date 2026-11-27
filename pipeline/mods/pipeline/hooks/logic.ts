@@ -171,6 +171,7 @@ export const REVIEW_AGENTS: ReadonlySet<string> = new Set([
   'value-integrity',
   'type-design',
   'tests',
+  'necessity',
   'fix-diff',
   'verify-finding',
 ])

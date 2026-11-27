@@ -120,3 +120,21 @@ agent setups next to this one:
   false ones mean 13 → 14 (max 45 → 20), all real kept and all false dropped in every run,
   ~41 K → ~43 K tokens per run. Where a format rule sits matters as much as its wording: at the
   end of the file it was read as a footnote.
+
+## R10 — an angle for code that works and should not exist (2026-11-27)
+
+Every angle in the table asks whether the change works. A cross-project catalog of sins the
+developer keeps for review — each entry a real case from a product, a protocol stand, a port or
+this terminal — is dominated by the other kind: a guard against a problem nobody showed reachable,
+a second copy of a value its owner already held, a new path beside one that already delivered
+the result, an entity nothing calls. The output is right, so the build, the tests and the defect
+angles all pass it; the cost is paid afterwards in CPU, memory and a second source of truth.
+`/simplify` does not cover it: it checks the form of what was written, and the catalog records
+that a pass checking form is exactly how such a mechanism survives. → `necessity` joins the
+conditional list, triggered by a change that adds a mechanism rather than changing behavior, and
+placed last — its ground fits most features and what it catches ships no wrong value, so it
+takes the one slot only when no defect angle's ground matched; §3 fixes the first candidate as the existing
+path; §6 asks three answers (trigger shown, harm left after recovery, belongs to this task)
+before a finding earns a fix; §0.5 tests the reading against one counterexample. Battery cases:
+`necessity-second-store`, `necessity-corpse`, the control `clean-necessity` — a guard that looks
+defensive and is needed.

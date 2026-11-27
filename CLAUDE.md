@@ -5,7 +5,7 @@ it passes* — or I write into the §10 receipt what failed and why I'm going an
 `CLAUDE.md` / `AGENTS.md` carries the project-specific facts (build command, components, theme,
 deps, the `## Commands` and `## Secrets` blocks); this file is only the structure and the gates.
 The measurements behind every number here live in the rules repo, `docs/RATIONALE.md` (cited as
-R1…R9): the rules stay short, the reasons stay checkable.
+R1…R10): the rules stay short, the reasons stay checkable.
 
 Core stance: **the reviewer and the verifier are a separate agent whose job is to break the
 change — not me re-reading my own diff.** A wrong-but-plausible change survives my own
@@ -83,6 +83,11 @@ already covered. Whichever way it lands goes in the line I state below, or §10 
   field. The trigger is the *shape*, where `contracts` is the behavior.
 - `tests` — it changes behavior that a test claims to cover, or adds a branch the suite cannot
   reach. Not "is there a test" — whether the existing one still asserts what it says it does.
+- `necessity` — it adds a mechanism rather than changing what existing code does: a new guard,
+  flag, lock, cache, store, retry, timeout, wrapper, helper or public item. Such code works, so
+  every defect angle passes it; this one asks whether it should exist at all (R10). Last on
+  purpose: what it catches costs but ships no wrong value, and its ground fits most features, so
+  it takes the slot only when no ground above matched.
 
 The order is silent-first: a signature break is compiler-adjacent and loud, a rounding bug is
 silent forever. **The slot stays one**: adding angles to this list widens the *choice*, never the
@@ -110,7 +115,12 @@ work, I check the request against one test: **is there a fork the developer woul
 differently than I would, whose answer is not in the code, the memory or this conversation, and
 where a wrong pick means redoing the work or an action I cannot take back?** Yes → I ask. No → I
 decide, and say how in one line: `Понял так: <the reading I am acting on>` (`Understood as:` for
-an English-speaking developer) — cheap to correct, and it is what §10 checks. A task that edits
+an English-speaking developer) — cheap to correct, and it is what §10 checks. For a feature or a
+bug that reading names what the user chose, set or handed to the program — not the code object it
+lives in today — and survives one **counterexample**: I picture a behavior that matches my words
+exactly and still fails the user; if one exists, the reading lacks the meaning that rules it out,
+and I add it before the first edit. A reading that fits many unrelated tasks unchanged says too
+little. A task that edits
 nothing (research, a question, a plan) owes no §0 class line; its first text is the question or
 that line.
 
@@ -246,6 +256,18 @@ official plugin marketplace, GitHub) and say in the plan what I found or that no
 such a search turns up is foreign code that runs with this user's rights: a plugin is installed
 only after `claude plugin details` is read, and a skill, plugin or MCP server from outside the
 official marketplace only after a `leak-review` of its source — never on a README's word.
+
+🚩 **Gate (existing path first):** the first candidate is fixed by rule, not chosen. When the user
+can already get the result by their own action and the task is to keep, repeat, carry over or
+automate it, the first candidate is to produce it **the way it is produced today**: find the entry
+where that action enters the program and feed it only what the user expressed — not to revive the
+internal objects the old action left behind. Otherwise it is what the program already does for
+this result plus the one missing action or value. I reject the first candidate only on a concrete
+obstacle traced in the source to a consequence for the user, after trying to remove that obstacle
+inside the same path. Every part the plan then keeps has one of two grounds: without it the
+intended result does not happen, or without it the change breaks a concrete behavior the user
+relies on today. A guard needed only because of the way I chose to build it is the price of that
+choice — it goes back into the comparison, it does not justify the choice.
 
 ## 4. Implement
 
@@ -393,8 +415,9 @@ Each name is a different **search procedure**, not a different topic — fire ex
 | 7 | value integrity | `value-integrity` | conditional only |
 | 8 | type design | `type-design` | conditional only |
 | 9 | tests | `tests` | conditional only |
+| 10 | necessity | `necessity` | conditional only (R10) |
 
-The §0 rows name only angles 1–3; 4 through 9 ride a §0 trigger and never a row — the one
+The §0 rows name only angles 1–3; 4 through 10 ride a §0 trigger and never a row — the one
 exception is `seams` in the orchestrate row, over the integrated diff where the parts meet. §0 spells the
 names with spaces ("error paths", "external data"); the agent to invoke is the hyphenated id in
 this table. What each one actually hunts is in its own file; if an angle keeps coming back thin, I
@@ -419,9 +442,15 @@ reads the count from the agents' answers, so the skip surfaces as a WARN whateve
 
 🚩 **Gate:** dedupe by `file:line`, then open every cited line and re-derive severity myself — a
 finding is a hypothesis, not a diagnosis. Most skeptical of race claims: agents routinely miss an
-outer lock or an interleaving that can't happen inside one frame. Every finding ends either fixed
-or **refuted against the source** — never dismissed as "sounds plausible either way", never
-auto-applied because it sounded confident. When a finding turns on how a third-party API or
+outer lock or an interleaving that can't happen inside one frame. Every finding ends fixed,
+**refuted against the source**, or named as pre-existing (the third answer below) — never dismissed as "sounds plausible either way", never
+auto-applied because it sounded confident. A finding earns a fix only with **three answers**:
+where the trigger is shown reachable in the source, what harm the user still sees after every
+existing fallback and recovery has run, and why it belongs to this task. Reachable with no harm
+left is refuted, not fixed; a real defect this change neither made nor touched is named to the
+developer in §10, not fixed in this diff. Before I lean on a finding's frame I check it: every
+name it cites has callers (grep), the guard it relies on has its preconditions met, and a
+"divergence from the reference" is older than a day (`git log -S`). When a finding turns on how a third-party API or
 protocol actually behaves, **I fetch its current docs myself** before accepting or refuting it — a
 stale-API mismatch is invisible to pure code-reading, and §10 names the library and what I
 checked. Confirmed fixes go in as ONE batch, then §5's build and static checks re-run once, with
@@ -555,7 +584,7 @@ Class + recipe: <what I stated at §0>
 4 decommission:  <superseded symbols grepped, 0 hits | deferred: sym — reason | N/A>
 5 build+static:  <exact command> -> <pass | fail: ... | no static checks — reported>
 6 review:        <N agents · angles fired · conditional: <which | none added: trigger I checked + why not>>
-  findings:      <n: n fixed / n refuted | 0 findings> · verify-finding <n dropped | N/A: ≤5>
+  findings:      <n: n fixed / n refuted / n pre-existing named | 0 findings> · verify-finding <n dropped | N/A: ≤5>
   refuted:       <file:line — why it doesn't hold | none>
   docs checked:  <library/protocol + what I verified | none needed>
 7 runtime:       <flow I drove -> what I observed | N/A: no runtime surface | NOT VERIFIED LIVE: <reason> + would need: <the one check>>

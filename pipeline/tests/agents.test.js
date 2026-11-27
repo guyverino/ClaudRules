@@ -1,7 +1,7 @@
 // The agent definitions: every review angle and the delta pass share one return contract and one
 // set of hard rules — the orchestrator parses the answers with one regex (ledger.js FINDING_RE),
 // so the block must be byte-identical across them. Claude Code agent files have no include, so
-// the copy lives in each file; this test is what keeps the ten copies from drifting apart.
+// the copy lives in each file; this test is what keeps the copies from drifting apart.
 
 const { t, tRoot, tFs, tPath } = require("./_harness");
 

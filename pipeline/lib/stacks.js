@@ -65,7 +65,7 @@ const SHIP_RE = /\bgit\s+(?:-C\s+(?:"[^"]*"|'[^']*'|\S+)\s+)?push\b|\bgh\s+(?:pr
 // Which agents are review angles and which are support: the checker counts the former as a
 // fired angle, the ledger scores them; a support agent (a per-finding filter, the delta pass)
 // is measured for cost only. One list, or a new angle is counted by one and not the other.
-const REVIEW_AGENTS = new Set(["flow", "half-fix", "contracts", "error-paths", "seams", "external-data", "value-integrity", "type-design", "tests"]);
+const REVIEW_AGENTS = new Set(["flow", "half-fix", "contracts", "error-paths", "seams", "external-data", "value-integrity", "type-design", "tests", "necessity"]);
 const SUPPORT_AGENTS = new Set(["fix-diff", "verify-finding"]);
 
 // A literal for a RegExp source.

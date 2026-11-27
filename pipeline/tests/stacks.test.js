@@ -1,7 +1,20 @@
 // The stack table: which files are code.
 
 const { t, pipeline } = require("./_harness");
-const { CODE_FILE_RE } = pipeline("lib/stacks.js");
+const { CODE_FILE_RE, REVIEW_AGENTS, SUPPORT_AGENTS } = pipeline("lib/stacks.js");
+
+// --- the agent lists: the checker's and the mod's spawn guard must name the same agents -------
+// The mod is TypeScript and cannot require stacks.js, so it keeps its own copy; a new angle added
+// to one list and not the other once left the guard blind to it.
+{
+  const fs = require("fs");
+  const path = require("path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "mods", "pipeline", "hooks", "logic.ts"), "utf8");
+  const body = (src.match(/REVIEW_AGENTS: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\)/) || [])[1] || "";
+  const modSet = [...body.matchAll(/'([a-z-]+)'/g)].map((m) => m[1]).sort();
+  const ours = [...REVIEW_AGENTS, ...SUPPORT_AGENTS].sort();
+  t(modSet.join(",") === ours.join(","), "agents: the mod's spawn guard lists the checker's review + support agents", modSet.join(","));
+}
 
 // --- CODE_FILE_RE: extension precedence and non-obvious code -------------------------------
 [

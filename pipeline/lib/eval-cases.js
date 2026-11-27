@@ -669,6 +669,148 @@ const CASES = [
     },
     defects: [],
   },
+  // necessity: the change works, every case's output is right — the planted defect is a part that
+  // has no right to exist. The clean control adds a guard that looks defensive and is needed.
+  {
+    id: "necessity-second-store",
+    angle: "necessity",
+    intent: "Show how many orders have arrived on the summary panel.",
+    files: {
+      "stats.js": { before: STATS_BEFORE, after: STATS_BEFORE },
+      "panel.js": {
+        before: PANEL_BEFORE,
+        after: L(
+          'const { totalSize } = require("./stats");',
+          "",
+          "function renderSummary(orders, count) {",
+          '  return "Total: " + totalSize(orders) + " · Orders: " + count;',
+          "}",
+          "",
+          "module.exports = { renderSummary };"
+        ),
+      },
+      "app.js": {
+        before: APP,
+        after: L(
+          'const { renderSummary } = require("./panel");',
+          "",
+          "// The summary is drawn once at start, before the first order arrives, and after every order.",
+          "let orders = [];",
+          "let orderCount = 0;",
+          "",
+          "function onStart() {",
+          "  return renderSummary(orders, orderCount);",
+          "}",
+          "",
+          "function onOrder(order) {",
+          "  orders.push(order);",
+          "  orderCount += 1;",
+          "  return renderSummary(orders, orderCount);",
+          "}",
+          "",
+          "module.exports = { onStart, onOrder };"
+        ),
+      },
+    },
+    defects: [
+      {
+        id: "count-beside-length",
+        what: "orderCount is a second copy of orders.length, kept in step by hand",
+        sites: [
+          { file: "app.js", text: "let orderCount = 0;" },
+          { file: "app.js", text: "orderCount += 1;" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "necessity-corpse",
+    angle: "necessity",
+    intent: "Show the total order size with two decimals on the summary panel.",
+    files: {
+      "stats.js": {
+        before: STATS_BEFORE,
+        after: L(
+          "// Order statistics shown on the summary panel.",
+          "",
+          "function totalSize(orders) {",
+          "  let sum = 0;",
+          "  for (const o of orders) sum += o.size;",
+          "  return sum;",
+          "}",
+          "",
+          "// Formats a size for display.",
+          "function formatSize(n) {",
+          "  return n.toFixed(2);",
+          "}",
+          "",
+          "module.exports = { totalSize, formatSize };"
+        ),
+      },
+      "panel.js": {
+        before: PANEL_BEFORE,
+        after: L(
+          'const { totalSize } = require("./stats");',
+          "",
+          "function renderSummary(orders) {",
+          '  return "Total: " + totalSize(orders).toFixed(2);',
+          "}",
+          "",
+          "module.exports = { renderSummary };"
+        ),
+      },
+      "app.js": { before: APP, after: APP },
+    },
+    defects: [
+      {
+        id: "formatter-nobody-calls",
+        what: "formatSize is exported and called nowhere: the panel formats inline",
+        sites: [{ file: "stats.js", text: "function formatSize(n) {" }],
+      },
+    ],
+  },
+  {
+    id: "clean-necessity",
+    angle: "necessity",
+    clean: true,
+    intent: "Show the largest order size on the summary panel.",
+    files: {
+      "stats.js": {
+        before: STATS_BEFORE,
+        after: L(
+          "// Order statistics shown on the summary panel.",
+          "",
+          "function totalSize(orders) {",
+          "  let sum = 0;",
+          "  for (const o of orders) sum += o.size;",
+          "  return sum;",
+          "}",
+          "",
+          "// The largest single order. The summary is drawn at start with no orders: 0, not -Infinity.",
+          "function largestSize(orders) {",
+          "  if (orders.length === 0) return 0;",
+          "  return Math.max(...orders.map((o) => o.size));",
+          "}",
+          "",
+          "module.exports = { totalSize, largestSize };"
+        ),
+      },
+      "panel.js": {
+        before: PANEL_BEFORE,
+        after: L(
+          'const { totalSize, largestSize } = require("./stats");',
+          "",
+          "function renderSummary(orders) {",
+          '  return "Total: " + totalSize(orders) + " · Largest: " + largestSize(orders);',
+          "}",
+          "",
+          "module.exports = { renderSummary };"
+        ),
+      },
+      "app.js": { before: APP, after: APP },
+    },
+    defects: [],
+  },
 ];
 
 // verify-finding cases: a numbered batch of findings on one of the changes above, some real and

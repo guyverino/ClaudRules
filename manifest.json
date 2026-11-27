@@ -8,6 +8,7 @@
     "agents/flow.md",
     "agents/half-fix.md",
     "agents/leak-review.md",
+    "agents/necessity.md",
     "agents/seams.md",
     "agents/tests.md",
     "agents/type-design.md",

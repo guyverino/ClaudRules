@@ -25,6 +25,11 @@ Then re-run that same trace for the inputs nobody builds a feature for:
 A hop that silently substitutes a default where the previous hop failed is a finding, not a
 convenience. So is a flow that works only because a later stage happens to re-run.
 
+A guard or recovery on the path counts only when its preconditions hold on the input you are
+tracing: the flag it waits for is still set at that hop, the timer it relies on is not refreshed by
+something else, the branch that arms it was taken. "A guard exists" is not "recovery happens" —
+follow the guard's own inputs before you lean on it.
+
 ## Known false alarms
 
 Shapes of past findings that did not survive the source. Before reporting one of these shapes, run
