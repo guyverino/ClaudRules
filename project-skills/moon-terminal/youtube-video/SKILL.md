@@ -51,7 +51,10 @@ Rules for the chapters (videos 12–15):
 - **The «Отчёт» on screen shows a POSITIVE total in every chapter of every video** (guide §10, 24.11;
   forgotten in video 23 on 27.11 — «почему ты не следуешь правилам»): each chapter starts with cut steps
   `rep-period:trigger` → `rep-period:menu:item:1` («Вчера»; 0 Сегодня, separators after) and the total
-  is checked green on a frame; a red one — another period, found by a short probe take.
+  is checked green on a frame; a red one — another period, found by a short probe take. Since 27.11
+  the director enforces it: before the first step not marked `cut` it reads the footer («Итого (N):»
+  and the amount, unchanged for 4 s: a stale total stays while the new query runs) and stops the take («отчёт в кадре с итогом …» / «в отчёте за
+  выбранный период нет сделок»); no report on screen is not checked.
 - **Rows to compare fit one frame.** The wheel zooms about ×2 per notch: a coin opens about an hour
   wide, −3 ≈ 10 h, −5 ≈ a day, −6 ≈ 2.5 days. Pick the rows' depths so the slowest fits a frame the
   fastest is still readable in (video 14: 5m/8h, 15m/16h, 30m/24h, not 1h/40h). Sloped lines are
@@ -364,7 +367,8 @@ afterwards. Watermark and channel links are set by hand in Studio (the API's wat
 
 - The «Отчёт» panel is on screen in most takes: ALWAYS make its total positive (the developer, 24.11) — cut
   steps at the take's start switch its period to a green day (`rep-period:trigger` →
-  `rep-period:menu:item:1` «Вчера»; other days if that one is red), and check it in the frames.
+  `rep-period:menu:item:1` «Вчера»; other days if that one is red); the director stops a take whose
+  first kept frame shows a red total.
   Lessons film on studio baseline `clean` (no auto figures, arbitrage, strategy-filter captions).
 - Another session's terminal window over the capture region spoils a take (24.11: a neighbour's
   `--fixture` bench opened over video 11.4 twice). Before a take, `Get-CimInstance Win32_Process
