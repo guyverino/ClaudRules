@@ -52,6 +52,9 @@ Rules for the chapters (videos 12–15):
   27.11: «минусовой первый экран сводки» — «Аналитика» opened on screen on its month, −838.57, and only then
   went to «Все»). A window carrying a total opens in a `cut` step and gets its period by cut steps before
   the first kept frame; the director checks only the «Отчёт» footer, the rest is checked on frames.
+- **A chapter ends on the last thing it explained** (video 15, 2:28: «пауза и непонятно про „в окне две наши
+  строчки“, ни к чему»): no opening the rows popup to list the rows again, no restating a definition already
+  said. Such a tail is cut with its lines.
 - **A wait asks only for what the chapter explains** (video 15, 27.11: «Юнитри был отличным кандидатом» —
   turned down by `touches_visible`, a level's earliest touch left of the frame). A zone/apex chapter waits
   without it (`wait_squeeze(..., touches=False)`). A closed coin's journal note names each squeeze's height,
