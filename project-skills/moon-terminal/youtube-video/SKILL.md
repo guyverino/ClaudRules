@@ -48,6 +48,10 @@ files by name and push them to its `main` as part of the task (memory `overlay-c
    video 17). A preset the Add menu does not offer is made from the nearest one this way.
 
 Rules for the chapters (videos 12–15):
+- **The «Отчёт» on screen shows a POSITIVE total in every chapter of every video** (guide §10, 24.11;
+  forgotten in video 23 on 27.11 — «почему ты не следуешь правилам»): each chapter starts with cut steps
+  `rep-period:trigger` → `rep-period:menu:item:1` («Вчера»; 0 Сегодня, separators after) and the total
+  is checked green on a frame; a red one — another period, found by a short probe take.
 - **Rows to compare fit one frame.** The wheel zooms about ×2 per notch: a coin opens about an hour
   wide, −3 ≈ 10 h, −5 ≈ a day, −6 ≈ 2.5 days. Pick the rows' depths so the slowest fits a frame the
   fastest is still readable in (video 14: 5m/8h, 15m/16h, 30m/24h, not 1h/40h). Sloped lines are
@@ -57,7 +61,9 @@ Rules for the chapters (videos 12–15):
 since #1492 and a plain `type` adds to it —, `d24h` twice, Bybit `scr-mkt-1-`) is
   narrated ONCE per video in one line and its clicks run `fast` (the generator does it). An event
   filter lists only coins with that event NOW («Поджим» = pressed squeezes only) and can be empty:
-  then lower the volume to 3M (1M at most), or the routine pick with more coins. Squeezes: any venue
+  then lower the volume to 3M (1M at most), or the routine pick with more coins. «Поджим» alone can
+  list one coin of 2535 (27.11): then 100k, and every pick after the first `optional` (a short list
+  passes the missing picks over instead of stopping the take). Squeezes: any venue
   (`scr-mkt-`). Stock perps and tickers like SNDK are never named aloud.
 - **Rows compared, then explained one by one** (video 13, 26.11): `wait_sets` with `card_px` (190 — the
   Ctrl card hangs below the pointer and the chart clips it near the bottom) chooses one line per row apart
@@ -85,7 +91,9 @@ since #1492 and a plain `type` adds to it —, `d24h` twice, Bybit `scr-mkt-1-`)
 - **A figure the narration explains is filmed big and part by part** (the developer, 26.11, video 15:
   squeezes found by widening sat in one strip, «практически в одну строчку»). Never `widen` for it:
   `wait_line` with `next_chart` and no `widen` (8 s per coin at the scenario's own view, wheel −2) and
-  `band_px` 110–130 for a squeeze. Then one `spot` step per part (`level`, `slope`, `zone`, `apex`), each
+  `band_px` 110–130 plus `narrow` 0.6 for a squeeze (the developer, 27.11: a tall squeeze still ran
+  almost parallel to its level — «две параллельные линии»; the gap must visibly close on screen), and
+  every other row hidden by cut eye clicks. Then one `spot` step per part (`level`, `slope`, `zone`, `apex`), each
   with its own line that fits the spot's `ms`: the edit draws a cyan mark on that part (`preview.py`).
 - **Events only where the frame shows them**, explained by the terminal's rule (guide §10). A
   squeeze BREAKOUT cannot be filmed: the figure leaves the chart on breakout (video 15).
@@ -223,7 +231,7 @@ matter (the found line, the card, before/after each change) before writing a wor
 5. The rules that bit (guide §10, kept there): no repeats across a chapter seam; no explaining the
    director's choices («на Байбите поджим редкий»); no narrating UI closing («палитру закроем»); no
    references back to a preset («как в готовой строчке»); UI abbreviations in words («совпадение
-   таймфреймов»); «строчку», «дельта», «отодвинем»; never «уже» (the voice confuses «уже» and
+   таймфреймов»); «строчку», «дельта», «отодвинем»; never «места» for «мЕста» (27.11: it said «местА»), never «уже» (the voice confuses «уже» and
    «ужЕ» — say «меньше», «теснее», «к этому моменту»). The same for «стоят» (read «стОят») and
    «стоит» (read «стОит»): «разнесены», «лежат», «находится» (video 13, 26.11). «Уровень держит»
    sounds as if the level holds something — «уровень держится». A chapter never opens by repeating
@@ -337,6 +345,13 @@ folder `<studio>\video\<NN>-<slug>\`, next to `video.mp4` / `video.srt`:
    --lang ru`) when their first video is uploaded, and their ids written here. Upload with
    `--playlist <id>` or `yt.py playlist add <id> <video>`. Chapters in the description are what
    YouTube turns into the clickable segments on the progress bar.
+5. **FAQ links follow by themselves** (27.11): once a video is public or unlisted, the hourly task
+   «MoonTerminal videos sync» (`private/film/youtube/videos_sync.py`) puts it into the site's
+   `src/data/videos.json`; the site links the FAQ answers it shows (to the second) and the FAQ bot adds
+   the same link under its group replies. Its chapters are read from YouTube's own description, and its
+   seconds from the studio folder's `parts.txt` takes and `video.srt`, so keep both as uploaded: a re-cut
+   whose `video.mp4` length differs from YouTube's is not rebuilt until it is uploaded. To ship at once:
+   `python videos_sync.py`; what got linked: `npm run review:videos` in the site repo.
 
 The channel is bound once by `connect.cmd` (README there); secrets live only in Windows Credential
 Manager — never write the client JSON or a token into the repo, the studio or a log. The bound
