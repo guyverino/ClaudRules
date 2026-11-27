@@ -52,6 +52,10 @@ Rules for the chapters (videos 12–15):
   27.11: «минусовой первый экран сводки» — «Аналитика» opened on screen on its month, −838.57, and only then
   went to «Все»). A window carrying a total opens in a `cut` step and gets its period by cut steps before
   the first kept frame; the director checks only the «Отчёт» footer, the rest is checked on frames.
+- **A wait asks only for what the chapter explains** (video 15, 27.11: «Юнитри был отличным кандидатом» —
+  turned down by `touches_visible`, a level's earliest touch left of the frame). A zone/apex chapter waits
+  without it (`wait_squeeze(..., touches=False)`). A closed coin's journal note names each squeeze's height,
+  narrowing and off-screen touches: read the reason there before changing a filter.
 - **A small window is stretched before the take** (video 27: the profit monitor stayed narrow, its numbers
   unreadable): the window a chapter is about fills the frame enough to read on a phone.
 - **The «Отчёт» on screen shows a POSITIVE total in every chapter of every video** (guide §10, 24.11;
