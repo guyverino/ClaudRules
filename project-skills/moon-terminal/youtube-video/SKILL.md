@@ -52,6 +52,10 @@ Rules for the chapters (videos 12–15):
   27.11: «минусовой первый экран сводки» — «Аналитика» opened on screen on its month, −838.57, and only then
   went to «Все»). A window carrying a total opens in a `cut` step and gets its period by cut steps before
   the first kept frame; the director checks only the «Отчёт» footer, the rest is checked on frames.
+- **The same action in different words** (video 16, 27.11: «ты повторяешь одно и то же»): four «Готово.» and
+  three «Цвет …» in a row sound mechanical — vary each repeat or leave it unsaid. The build chapter does not
+  open on «Окно „Автофигуры“ пока пустое» («как умирающий лебедь»): a lively line, different in every video.
+  The screener pick runs `fast` from the «Скринер» click on, under ONE fresh line, never «монеты как обычно…».
 - **A chapter ends on the last thing it explained** (video 15, 2:28: «пауза и непонятно про „в окне две наши
   строчки“, ни к чему»): no opening the rows popup to list the rows again, no restating a definition already
   said. Such a tail is cut with its lines.
