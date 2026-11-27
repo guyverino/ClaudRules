@@ -48,6 +48,12 @@ files by name and push them to its `main` as part of the task (memory `overlay-c
    video 17). A preset the Add menu does not offer is made from the nearest one this way.
 
 Rules for the chapters (videos 12–15):
+- **Every profit figure on screen is positive from the first kept frame, not only the «Отчёт»** (video 27,
+  27.11: «минусовой первый экран сводки» — «Аналитика» opened on screen on its month, −838.57, and only then
+  went to «Все»). A window carrying a total opens in a `cut` step and gets its period by cut steps before
+  the first kept frame; the director checks only the «Отчёт» footer, the rest is checked on frames.
+- **A small window is stretched before the take** (video 27: the profit monitor stayed narrow, its numbers
+  unreadable): the window a chapter is about fills the frame enough to read on a phone.
 - **The «Отчёт» on screen shows a POSITIVE total in every chapter of every video** (guide §10, 24.11;
   forgotten in video 23 on 27.11 — «почему ты не следуешь правилам»): each chapter starts with cut steps
   `rep-period:trigger` → `rep-period:menu:item:1` («Вчера»; 0 Сегодня, separators after) and the total
