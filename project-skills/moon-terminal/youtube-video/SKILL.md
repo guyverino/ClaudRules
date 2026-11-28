@@ -271,6 +271,13 @@ matter (the found line, the card, before/after each change) before writing a wor
 run it in a loop of up to three tries; the cache keeps what was voiced. The key is read from the
 registry, never printed.
 
+The voice sometimes says a syllable twice (video 12, 28.11: «заикания на 1:55»). The assembly is
+not the cause: check first that the mix plays the cached line straight (chunk-by-chunk
+cross-correlation against `voice.cached(<text>)` gives one constant offset). The stutter lives in the
+cached mp3 itself: a 0.15 s stretch matching another 0.4–0.7 s later at ncc ≥ 0.85, two chunks in a
+row. Fix: move that cache file aside (never delete — keep it until the new one is checked) and run
+`voice.py full` again: a new generation of the same text, then reassemble.
+
 ## 6. Assemble
 
 ```powershell
